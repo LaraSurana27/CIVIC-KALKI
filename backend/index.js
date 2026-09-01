@@ -9,6 +9,7 @@ const app = express();
 const errorHandler = require('./middleware/errorHandler');
 const entityRoutes = require('./routes/entity');
 const formRoutes = require('./routes/form');
+const parameterValueRoutes = require('./routes/parameterValue');
 
 // ── Body parsing (limit set to prevent oversized payloads) ──
 app.use(express.json({ limit: '1mb' }));
@@ -21,6 +22,7 @@ app.get('/health', (_req, res) => {
 
 // ── Route mounting ──
 app.use('/entities', entityRoutes);
+app.use('/entities/:id/values', parameterValueRoutes);   // ParameterValue storage
 app.use('/', formRoutes);          // mounts /forms, /sections, /subsections
 
 // ── Global error handler (must be last) ──
