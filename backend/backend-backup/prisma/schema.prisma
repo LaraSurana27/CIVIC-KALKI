@@ -1,0 +1,274 @@
+// ============================================================
+// CIVIC-KALKI — Core Metadata Schema
+// datasource: PostgreSQL via Supabase (DATABASE_URL in .env)
+// generator:  prisma-client-js
+// Tables: 19 (bot_profile and ai_execution_log are OUT OF SCOPE — deferred to CK-46)
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// LAYER 1 — Core Structure (10 tables)
+// ============================================================
+
+model Domain {
+  domain_id   Int          @id @default(autoincrement())
+  domain_name String
+  description String?
+  entityTypes EntityType[]
+}
+
+model EntityType {
+  entity_type_id Int      @id @default(autoincrement())
+  domain_id      Int
+  name           String
+  description    String?
+
+  // Relations to parent
+  domain Domain @relation(fields: [domain_id], references: [domain_id])
+
+  // Inverse relations for children
+  entities          Entity[]
+  formMasters       FormMaster[]
+  workflowMasters   WorkflowMaster[]
+  approvalMatrices  ApprovalMatrix[]
+  reportMasters     ReportMaster[]
+  dashboardMasters  DashboardMaster[]
+
+  // Named inverse relations for EntityRelationshipRule self-references
+  sourceEntityTypes EntityRelationshipRule[] @relation("SourceEntityType")
+  targetEntityTypes EntityRelationshipRule[] @relation("TargetEntityType")
+}
+
+model Entity {
+  entity_id      Int    @id @default(autoincrement())
+  entity_type_id Int
+  name           String
+  location       String?
+  status         String?
+
+  // Relations to parent
+  entityType EntityType @relation(fields: [entity_type_id], references: [entity_type_id])
+
+  // Inverse relations for children
+  parameterValues  ParameterValue[]
+  auditLogs        AuditLog[]
+  fileRepositories FileRepository[]
+}
+
+model EntityRelationshipRule {
+  rule_id               Int     @id @default(autoincrement())
+  source_entity_type_id Int
+  target_entity_type_id Int
+  event                 String?
+  auto_create           Boolean @default(false)
+  auto_approve          Boolean @default(false)
+
+  // Named relations — required because both FKs point to EntityType
+  sourceEntityType EntityType @relation("SourceEntityType", fields: [source_entity_type_id], references: [entity_type_id])
+  targetEntityType EntityType @relation("TargetEntityType", fields: [target_entity_type_id], references: [entity_type_id])
+}
+
+model FormMaster {
+  form_id        Int    @id @default(autoincrement())
+  entity_type_id Int
+  form_name      String
+  version        String?
+  status         String?
+
+  // Relations to parent
+  entityType EntityType @relation(fields: [entity_type_id], references: [entity_type_id])
+
+  // Inverse relations for children
+  sections         SectionMaster[]
+  approvalMatrices ApprovalMatrix[]
+  securityRoles    SecurityRole[]
+}
+
+model SectionMaster {
+  section_id    Int    @id @default(autoincrement())
+  form_id       Int
+  section_name  String
+  display_order Int    @default(0)
+
+  // Relations to parent
+  formMaster FormMaster @relation(fields: [form_id], references: [form_id])
+
+  // Inverse relations for children
+  subsections SubsectionMaster[]
+}
+
+model SubsectionMaster {
+  subsection_id   Int    @id @default(autoincrement())
+  section_id      Int
+  subsection_name String
+
+  // Relations to parent
+  sectionMaster SectionMaster @relation(fields: [section_id], references: [section_id])
+
+  // Inverse relations for children
+  parameters ParameterMaster[]
+}
+
+model ParameterCategory {
+  category_id   Int    @id @default(autoincrement())
+  category_name String
+
+  // Inverse relations for children
+  parameters ParameterMaster[]
+}
+
+model ParameterMaster {
+  parameter_id    Int     @id @default(autoincrement())
+  subsection_id   Int
+  category_id     Int
+  field_type      String?
+  control_type    String?
+  mandatory       Boolean @default(false)
+  validation_rule String?
+
+  // Relations to parents
+  subsectionMaster  SubsectionMaster  @relation(fields: [subsection_id], references: [subsection_id])
+  parameterCategory ParameterCategory @relation(fields: [category_id], references: [category_id])
+
+  // Inverse relations for children
+  parameterValues  ParameterValue[]
+  fileRepositories FileRepository[]
+}
+
+model ParameterValue {
+  value_id     Int      @id @default(autoincrement())
+  parameter_id Int
+  entity_id    Int
+  value        String?
+  created_date DateTime @default(now())
+
+  // Relations to parents
+  parameterMaster ParameterMaster @relation(fields: [parameter_id], references: [parameter_id])
+  entity          Entity          @relation(fields: [entity_id], references: [entity_id])
+}
+
+// ============================================================
+// LAYER 2 — Process & Governance (5 tables)
+// ============================================================
+
+model WorkflowMaster {
+  workflow_id    Int    @id @default(autoincrement())
+  entity_type_id Int
+  trigger        String?
+  action         String?
+  stage          String?
+
+  // Relations to parent
+  entityType EntityType @relation(fields: [entity_type_id], references: [entity_type_id])
+
+  // Inverse relations for children
+  notificationRules NotificationRule[]
+}
+
+model ApprovalMatrix {
+  approval_id    Int    @id @default(autoincrement())
+  entity_type_id Int
+  form_id        Int
+  level          Int    @default(1)
+  approver       String?
+
+  // Relations to parents
+  entityType EntityType @relation(fields: [entity_type_id], references: [entity_type_id])
+  formMaster FormMaster @relation(fields: [form_id], references: [form_id])
+}
+
+model EmailTemplate {
+  template_id   Int    @id @default(autoincrement())
+  template_name String
+  subject       String?
+  body          String?
+
+  // Inverse relations for children
+  notificationRules NotificationRule[]
+}
+
+model NotificationRule {
+  notification_id Int    @id @default(autoincrement())
+  workflow_id     Int
+  template_id     Int
+  event_name      String?
+  notify_role     String?
+
+  // Relations to parents
+  workflowMaster WorkflowMaster @relation(fields: [workflow_id], references: [workflow_id])
+  emailTemplate  EmailTemplate  @relation(fields: [template_id], references: [template_id])
+}
+
+model SecurityRole {
+  role_id    Int    @id @default(autoincrement())
+  form_id    Int
+  role_name  String
+  permission String?
+  scope      String?
+
+  // Relations to parent
+  formMaster FormMaster @relation(fields: [form_id], references: [form_id])
+}
+
+// ============================================================
+// LAYER 3 — Reporting & Analytics (2 tables)
+// ============================================================
+
+model ReportMaster {
+  report_id      Int    @id @default(autoincrement())
+  entity_type_id Int
+  report_name    String
+  filters        String?
+  output_format  String?
+
+  // Relations to parent
+  entityType EntityType @relation(fields: [entity_type_id], references: [entity_type_id])
+}
+
+model DashboardMaster {
+  dashboard_id   Int    @id @default(autoincrement())
+  entity_type_id Int
+  widget_name    String
+  metric         String?
+  filter         String?
+  display_type   String?
+
+  // Relations to parent
+  entityType EntityType @relation(fields: [entity_type_id], references: [entity_type_id])
+}
+
+// ============================================================
+// LAYER 4 — System & Files (2 tables)
+// ============================================================
+
+model AuditLog {
+  audit_id  Int      @id @default(autoincrement())
+  entity_id Int
+  action    String?
+  user      String?
+  datetime  DateTime @default(now())
+  reason    String?
+
+  // Relations to parent
+  entity Entity @relation(fields: [entity_id], references: [entity_id])
+}
+
+model FileRepository {
+  file_id      Int    @id @default(autoincrement())
+  entity_id    Int
+  parameter_id Int
+  file_name    String
+  path         String?
+
+  // Relations to parents
+  entity          Entity          @relation(fields: [entity_id], references: [entity_id])
+  parameterMaster ParameterMaster @relation(fields: [parameter_id], references: [parameter_id])
+}
