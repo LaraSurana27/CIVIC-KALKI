@@ -15,6 +15,7 @@
 const express = require('express');
 const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
+const { checkAndFireRules } = require('../services/ruleEngine');
 
 const prisma = new PrismaClient();
 
@@ -250,6 +251,28 @@ router.put('/:id', async (req, res, next) => {
       },
     });
 
+    // ── Fire rule engine (non-blocking) if status was changed ────────────────
+    // Entity update succeeds regardless of rule engine outcome.
+    if (status !== undefined && typeof status === 'string' && status.trim() !== '') {
+      const eventType = status.trim().toLowerCase();
+      checkAndFireRules(entityId, eventType)
+        .then((ruleResult) => {
+          if (ruleResult.rulesFired > 0) {
+            console.log(
+              `[RULE ENGINE] ${ruleResult.rulesFired} rule(s) fired for entity #${entityId}, event "${eventType}". ` +
+              `Created: ${ruleResult.createdEntities.map((e) => `#${e.entity_id}`).join(', ')}`
+            );
+          }
+        })
+        .catch((ruleErr) => {
+          // Log the error server-side but never fail the update response
+          console.error(
+            `[RULE ENGINE ERROR] Failed to process rules for entity #${entityId}, event "${eventType}":`,
+            ruleErr
+          );
+        });
+    }
+
     return res.status(200).json({ success: true, data: updated });
   } catch (err) {
     return next(err);
@@ -294,6 +317,30 @@ router.delete('/:id', async (req, res, next) => {
       message: `Entity ${entityId} has been soft-deleted (status set to 'deleted'). Related records are preserved.`,
       data: { entity_id: softDeleted.entity_id, status: softDeleted.status },
     });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /entities/:id/fire-rules
+// Direct / standalone trigger for the rule engine — useful for testing.
+// Body: { "eventType": "approved" }
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/fire-rules', async (req, res, next) => {
+  try {
+    const entityId = parsePositiveInt(req.params.id, 'id');
+    const { eventType } = req.body;
+
+    if (!eventType || typeof eventType !== 'string' || eventType.trim() === '') {
+      return next(
+        createError('"eventType" is required and must be a non-empty string.', 400)
+      );
+    }
+
+    const ruleResult = await checkAndFireRules(entityId, eventType.trim().toLowerCase());
+
+    return res.status(200).json({ success: true, data: ruleResult });
   } catch (err) {
     return next(err);
   }
