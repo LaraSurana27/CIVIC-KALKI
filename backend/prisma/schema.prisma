@@ -2,7 +2,7 @@
 // CIVIC-KALKI — Core Metadata Schema
 // datasource: PostgreSQL via Supabase (DATABASE_URL in .env)
 // generator:  prisma-client-js
-// Tables: 19 (bot_profile and ai_execution_log are OUT OF SCOPE — deferred to CK-46)
+// Tables: 20 (bot_profile and ai_execution_log are OUT OF SCOPE — deferred to CK-46)
 // ============================================================
 
 generator client {
@@ -271,4 +271,21 @@ model FileRepository {
   // Relations to parents
   entity          Entity          @relation(fields: [entity_id], references: [entity_id])
   parameterMaster ParameterMaster @relation(fields: [parameter_id], references: [parameter_id])
+}
+
+// ============================================================
+// LAYER 5 — Auth (1 table)
+// AuditLog.user remains a plain String — Domain 2 will wire the
+// FK once auth routes are built (not this migration's scope).
+// ============================================================
+
+model User {
+  user_id       Int      @id @default(autoincrement())
+  name          String
+  email         String   @unique
+  password_hash String
+  role          String   @default("citizen")   // citizen | coordinator_area | coordinator_general | director | admin
+  assignedArea  String?                         // nullable, only relevant for coordinators
+  created_date  DateTime @default(now())
+  updated_date  DateTime @updatedAt
 }
