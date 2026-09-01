@@ -8,7 +8,7 @@ const app = express();
 
 const errorHandler = require('./middleware/errorHandler');
 const entityRoutes = require('./routes/entity');
-const formRoutes   = require('./routes/form');
+const formRoutes = require('./routes/form');
 
 // ── Body parsing (limit set to prevent oversized payloads) ──
 app.use(express.json({ limit: '1mb' }));
