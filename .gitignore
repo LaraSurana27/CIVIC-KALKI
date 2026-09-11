@@ -5,3 +5,4 @@ __pycache__/
 *.pyc
 node_modules/ 
 .env 
+backend/seed-tokens.json
