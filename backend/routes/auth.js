@@ -1,0 +1,142 @@
+const express = require('express');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const { PrismaClient } = require('@prisma/client');
+
+const router = express.Router();
+const prisma = new PrismaClient();
+
+function createHttpError(message, statusCode) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+function signToken(user) {
+  return jwt.sign(
+    {
+      user_id: user.user_id,
+      name: user.name,
+      role: user.role,
+      assigned_area: user.assignedArea || null,
+    },
+    process.env.JWT_SECRET || 'development-secret-change-me',
+    {
+      expiresIn: process.env.JWT_EXPIRES_IN || '24h',
+    }
+  );
+}
+
+router.post('/signup', async (req, res, next) => {
+  try {
+    const { name, email, password } = req.body;
+
+    if (!name || typeof name !== 'string' || name.trim() === '') {
+      return next(createHttpError('"name" is required and must be a non-empty string.', 400));
+    }
+
+    if (!email || typeof email !== 'string' || email.trim() === '') {
+      return next(createHttpError('"email" is required and must be a non-empty string.', 400));
+    }
+
+    if (!password || typeof password !== 'string' || password.length < 8) {
+      return next(createHttpError('"password" is required and must be at least 8 characters long.', 400));
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const existingUser = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
+
+    if (existingUser) {
+      return next(createHttpError('An account with this email already exists.', 409));
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    const user = await prisma.user.create({
+      data: {
+        name: name.trim(),
+        email: normalizedEmail,
+        password_hash: passwordHash,
+        role: 'citizen',
+      },
+    });
+
+    const token = signToken(user);
+
+    const safeUser = {
+      user_id: user.user_id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      assignedArea: user.assignedArea,
+      created_date: user.created_date,
+      updated_date: user.updated_date,
+    };
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        user: safeUser,
+        token,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/login', async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || typeof email !== 'string' || email.trim() === '') {
+      return next(createHttpError('"email" is required and must be a non-empty string.', 400));
+    }
+
+    if (!password || typeof password !== 'string' || password.length < 8) {
+      return next(createHttpError('"password" is required and must be at least 8 characters long.', 400));
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
+
+    if (!user) {
+      return next(createHttpError('Invalid email or password.', 401));
+    }
+
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) {
+      return next(createHttpError('Invalid email or password.', 401));
+    }
+
+    const token = signToken(user);
+
+    const safeUser = {
+      user_id: user.user_id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      assignedArea: user.assignedArea,
+      created_date: user.created_date,
+      updated_date: user.updated_date,
+    };
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        user: safeUser,
+        token,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+module.exports = router;

@@ -1,0 +1,227 @@
+// CIVIC-KALKI database ER diagram
+//
+// Source of truth: ../prisma/schema.prisma
+// Updated for the Phase 1 demo-foundation migration on 2026-09-11.
+// Import this file at https://dbdiagram.io to view the diagram.
+//
+// Scope note: AuditLog.user remains legacy display text. New human actions use
+// the actor_user_id relation; nullable user relations permit system actions.
+
+Table Domain {
+  domain_id int [pk, increment]
+  domain_name text [not null]
+  description text
+}
+
+Table EntityType {
+  entity_type_id int [pk, increment]
+  domain_id int [not null]
+  name text [not null]
+  description text
+}
+
+Table Entity {
+  entity_id int [pk, increment]
+  entity_type_id int [not null]
+  owner_user_id int
+  name text [not null]
+  location text
+  area text
+  status text
+}
+
+Table EntityRelationshipRule {
+  rule_id int [pk, increment]
+  source_entity_type_id int [not null]
+  target_entity_type_id int [not null]
+  event text
+  auto_create boolean [not null, default: false]
+  auto_approve boolean [not null, default: false]
+}
+
+Table FormMaster {
+  form_id int [pk, increment]
+  entity_type_id int [not null]
+  form_name text [not null]
+  version text
+  status text
+}
+
+Table SectionMaster {
+  section_id int [pk, increment]
+  form_id int [not null]
+  section_name text [not null]
+  display_order int [not null, default: 0]
+}
+
+Table SubsectionMaster {
+  subsection_id int [pk, increment]
+  section_id int [not null]
+  subsection_name text [not null]
+}
+
+Table ParameterCategory {
+  category_id int [pk, increment]
+  category_name text [not null]
+}
+
+Table ParameterMaster {
+  parameter_id int [pk, increment]
+  subsection_id int [not null]
+  category_id int [not null]
+  field_key text
+  label text
+  field_type text
+  control_type text
+  display_order int [not null, default: 0]
+  options jsonb
+  mandatory boolean [not null, default: false]
+  validation_rule text
+}
+
+Table ParameterValue {
+  value_id int [pk, increment]
+  parameter_id int [not null]
+  entity_id int [not null]
+  value text
+  created_date timestamp [not null, default: `CURRENT_TIMESTAMP`]
+}
+
+Table WorkflowMaster {
+  workflow_id int [pk, increment]
+  entity_type_id int [not null]
+  trigger text
+  action text
+  stage text
+}
+
+Table ApprovalMatrix {
+  approval_id int [pk, increment]
+  entity_type_id int [not null]
+  form_id int [not null]
+  level int [not null, default: 1]
+  approver text
+}
+
+Table EmailTemplate {
+  template_id int [pk, increment]
+  template_name text [not null]
+  subject text
+  body text
+}
+
+Table NotificationRule {
+  notification_id int [pk, increment]
+  workflow_id int [not null]
+  template_id int [not null]
+  event_name text
+  notify_role text
+}
+
+Table SecurityRole {
+  role_id int [pk, increment]
+  form_id int [not null]
+  role_name text [not null]
+  permission text
+  scope text
+}
+
+Table ReportMaster {
+  report_id int [pk, increment]
+  entity_type_id int [not null]
+  report_name text [not null]
+  filters text
+  output_format text
+}
+
+Table DashboardMaster {
+  dashboard_id int [pk, increment]
+  entity_type_id int [not null]
+  widget_name text [not null]
+  metric text
+  filter text
+  display_type text
+}
+
+Table AuditLog {
+  audit_id int [pk, increment]
+  entity_id int [not null]
+  actor_user_id int
+  action text
+  user text
+  old_status text
+  new_status text
+  datetime timestamp [not null, default: `CURRENT_TIMESTAMP`]
+  reason text
+}
+
+Table ApprovalHistory {
+  approval_history_id int [pk, increment]
+  entity_id int [not null]
+  actor_user_id int
+  from_status text
+  to_status text [not null]
+  reason text
+  created_date timestamp [not null, default: `CURRENT_TIMESTAMP`]
+}
+
+Table AIExecutionLog {
+  ai_execution_log_id int [pk, increment]
+  entity_id int [not null]
+  requested_by_user_id int
+  provider text [not null, default: 'gemini']
+  model text
+  prompt text
+  response text
+  status text [not null, default: 'completed']
+  error_message text
+  created_date timestamp [not null, default: `CURRENT_TIMESTAMP`]
+}
+
+Table FileRepository {
+  file_id int [pk, increment]
+  entity_id int [not null]
+  parameter_id int [not null]
+  file_name text [not null]
+  path text
+}
+
+Table User {
+  user_id int [pk, increment]
+  name text [not null]
+  email text [not null, unique]
+  password_hash text [not null]
+  role text [not null, default: 'citizen']
+  assignedArea text
+  created_date timestamp [not null, default: `CURRENT_TIMESTAMP`]
+  updated_date timestamp [not null]
+}
+
+Ref: EntityType.domain_id > Domain.domain_id
+Ref: Entity.entity_type_id > EntityType.entity_type_id
+Ref: Entity.owner_user_id > User.user_id
+Ref: EntityRelationshipRule.source_entity_type_id > EntityType.entity_type_id
+Ref: EntityRelationshipRule.target_entity_type_id > EntityType.entity_type_id
+Ref: FormMaster.entity_type_id > EntityType.entity_type_id
+Ref: SectionMaster.form_id > FormMaster.form_id
+Ref: SubsectionMaster.section_id > SectionMaster.section_id
+Ref: ParameterMaster.subsection_id > SubsectionMaster.subsection_id
+Ref: ParameterMaster.category_id > ParameterCategory.category_id
+Ref: ParameterValue.parameter_id > ParameterMaster.parameter_id
+Ref: ParameterValue.entity_id > Entity.entity_id
+Ref: WorkflowMaster.entity_type_id > EntityType.entity_type_id
+Ref: ApprovalMatrix.entity_type_id > EntityType.entity_type_id
+Ref: ApprovalMatrix.form_id > FormMaster.form_id
+Ref: NotificationRule.workflow_id > WorkflowMaster.workflow_id
+Ref: NotificationRule.template_id > EmailTemplate.template_id
+Ref: SecurityRole.form_id > FormMaster.form_id
+Ref: ReportMaster.entity_type_id > EntityType.entity_type_id
+Ref: DashboardMaster.entity_type_id > EntityType.entity_type_id
+Ref: AuditLog.entity_id > Entity.entity_id
+Ref: AuditLog.actor_user_id > User.user_id
+Ref: ApprovalHistory.entity_id > Entity.entity_id
+Ref: ApprovalHistory.actor_user_id > User.user_id
+Ref: AIExecutionLog.entity_id > Entity.entity_id
+Ref: AIExecutionLog.requested_by_user_id > User.user_id
+Ref: FileRepository.entity_id > Entity.entity_id
+Ref: FileRepository.parameter_id > ParameterMaster.parameter_id

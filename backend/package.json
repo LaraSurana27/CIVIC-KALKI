@@ -6,7 +6,10 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "seed": "node seed.js",
+    "workflow-test": "node workflow_test.js",
+    "test": "jest --runInBand",
+    "test:ci": "jest --runInBand --reporters=default"
   },
   "keywords": [],
   "author": "",
@@ -14,9 +17,15 @@
   "type": "commonjs",
   "dependencies": {
     "@prisma/client": "^6.19.3",
-    "express": "^5.2.1"
+    "bcrypt": "^5.1.1",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.2"
   },
   "devDependencies": {
-    "prisma": "^6.19.3"
+    "jest": "^30.5.1",
+    "node-fetch": "^2.7.0",
+    "prisma": "^6.19.3",
+    "supertest": "^7.2.2"
   }
 }

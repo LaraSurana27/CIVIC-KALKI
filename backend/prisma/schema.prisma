@@ -2,7 +2,7 @@
 // CIVIC-KALKI — Core Metadata Schema
 // datasource: PostgreSQL via Supabase (DATABASE_URL in .env)
 // generator:  prisma-client-js
-// Tables: 20 (bot_profile and ai_execution_log are OUT OF SCOPE — deferred to CK-46)
+// Tables: 22 (bot_profile remains out of scope; AIExecutionLog is in Phase 1)
 // ============================================================
 
 generator client {
@@ -26,7 +26,7 @@ model Domain {
 }
 
 model EntityType {
-  entity_type_id Int      @id @default(autoincrement())
+  entity_type_id Int     @id @default(autoincrement())
   domain_id      Int
   name           String
   description    String?
@@ -35,12 +35,12 @@ model EntityType {
   domain Domain @relation(fields: [domain_id], references: [domain_id])
 
   // Inverse relations for children
-  entities          Entity[]
-  formMasters       FormMaster[]
-  workflowMasters   WorkflowMaster[]
-  approvalMatrices  ApprovalMatrix[]
-  reportMasters     ReportMaster[]
-  dashboardMasters  DashboardMaster[]
+  entities         Entity[]
+  formMasters      FormMaster[]
+  workflowMasters  WorkflowMaster[]
+  approvalMatrices ApprovalMatrix[]
+  reportMasters    ReportMaster[]
+  dashboardMasters DashboardMaster[]
 
   // Named inverse relations for EntityRelationshipRule self-references
   sourceEntityTypes EntityRelationshipRule[] @relation("SourceEntityType")
@@ -48,19 +48,27 @@ model EntityType {
 }
 
 model Entity {
-  entity_id      Int    @id @default(autoincrement())
+  entity_id      Int     @id @default(autoincrement())
   entity_type_id Int
+  owner_user_id  Int?
   name           String
   location       String?
+  area           String?
   status         String?
 
   // Relations to parent
   entityType EntityType @relation(fields: [entity_type_id], references: [entity_type_id])
+  owner      User?      @relation("EntityOwner", fields: [owner_user_id], references: [user_id], onDelete: SetNull)
 
   // Inverse relations for children
   parameterValues  ParameterValue[]
   auditLogs        AuditLog[]
+  approvalHistory  ApprovalHistory[]
+  aiExecutionLogs  AIExecutionLog[]
   fileRepositories FileRepository[]
+
+  @@index([owner_user_id])
+  @@index([area, status])
 }
 
 model EntityRelationshipRule {
@@ -77,7 +85,7 @@ model EntityRelationshipRule {
 }
 
 model FormMaster {
-  form_id        Int    @id @default(autoincrement())
+  form_id        Int     @id @default(autoincrement())
   entity_type_id Int
   form_name      String
   version        String?
@@ -129,8 +137,12 @@ model ParameterMaster {
   parameter_id    Int     @id @default(autoincrement())
   subsection_id   Int
   category_id     Int
+  field_key       String?
+  label           String?
   field_type      String?
   control_type    String?
+  display_order   Int     @default(0)
+  options         Json?
   mandatory       Boolean @default(false)
   validation_rule String?
 
@@ -141,6 +153,9 @@ model ParameterMaster {
   // Inverse relations for children
   parameterValues  ParameterValue[]
   fileRepositories FileRepository[]
+
+  @@unique([subsection_id, field_key])
+  @@index([subsection_id, display_order])
 }
 
 model ParameterValue {
@@ -153,6 +168,8 @@ model ParameterValue {
   // Relations to parents
   parameterMaster ParameterMaster @relation(fields: [parameter_id], references: [parameter_id])
   entity          Entity          @relation(fields: [entity_id], references: [entity_id])
+
+  @@unique([entity_id, parameter_id])
 }
 
 // ============================================================
@@ -160,7 +177,7 @@ model ParameterValue {
 // ============================================================
 
 model WorkflowMaster {
-  workflow_id    Int    @id @default(autoincrement())
+  workflow_id    Int     @id @default(autoincrement())
   entity_type_id Int
   trigger        String?
   action         String?
@@ -174,10 +191,10 @@ model WorkflowMaster {
 }
 
 model ApprovalMatrix {
-  approval_id    Int    @id @default(autoincrement())
+  approval_id    Int     @id @default(autoincrement())
   entity_type_id Int
   form_id        Int
-  level          Int    @default(1)
+  level          Int     @default(1)
   approver       String?
 
   // Relations to parents
@@ -186,7 +203,7 @@ model ApprovalMatrix {
 }
 
 model EmailTemplate {
-  template_id   Int    @id @default(autoincrement())
+  template_id   Int     @id @default(autoincrement())
   template_name String
   subject       String?
   body          String?
@@ -196,7 +213,7 @@ model EmailTemplate {
 }
 
 model NotificationRule {
-  notification_id Int    @id @default(autoincrement())
+  notification_id Int     @id @default(autoincrement())
   workflow_id     Int
   template_id     Int
   event_name      String?
@@ -208,7 +225,7 @@ model NotificationRule {
 }
 
 model SecurityRole {
-  role_id    Int    @id @default(autoincrement())
+  role_id    Int     @id @default(autoincrement())
   form_id    Int
   role_name  String
   permission String?
@@ -223,7 +240,7 @@ model SecurityRole {
 // ============================================================
 
 model ReportMaster {
-  report_id      Int    @id @default(autoincrement())
+  report_id      Int     @id @default(autoincrement())
   entity_type_id Int
   report_name    String
   filters        String?
@@ -234,7 +251,7 @@ model ReportMaster {
 }
 
 model DashboardMaster {
-  dashboard_id   Int    @id @default(autoincrement())
+  dashboard_id   Int     @id @default(autoincrement())
   entity_type_id Int
   widget_name    String
   metric         String?
@@ -246,23 +263,65 @@ model DashboardMaster {
 }
 
 // ============================================================
-// LAYER 4 — System & Files (2 tables)
+// LAYER 4 — System, Audit & Files (4 tables)
 // ============================================================
 
 model AuditLog {
-  audit_id  Int      @id @default(autoincrement())
-  entity_id Int
-  action    String?
-  user      String?
-  datetime  DateTime @default(now())
-  reason    String?
+  audit_id      Int      @id @default(autoincrement())
+  entity_id     Int
+  actor_user_id Int?
+  action        String?
+  user          String?
+  old_status    String?
+  new_status    String?
+  datetime      DateTime @default(now())
+  reason        String?
 
   // Relations to parent
-  entity Entity @relation(fields: [entity_id], references: [entity_id])
+  entity    Entity @relation(fields: [entity_id], references: [entity_id])
+  actorUser User?  @relation("AuditActor", fields: [actor_user_id], references: [user_id], onDelete: SetNull)
+
+  @@index([entity_id, datetime])
+  @@index([actor_user_id])
+}
+
+model ApprovalHistory {
+  approval_history_id Int      @id @default(autoincrement())
+  entity_id           Int
+  actor_user_id       Int?
+  from_status         String?
+  to_status           String
+  reason              String?
+  created_date        DateTime @default(now())
+
+  entity    Entity @relation(fields: [entity_id], references: [entity_id])
+  actorUser User?  @relation("ApprovalActor", fields: [actor_user_id], references: [user_id], onDelete: SetNull)
+
+  @@index([entity_id, created_date])
+  @@index([actor_user_id])
+}
+
+model AIExecutionLog {
+  ai_execution_log_id  Int      @id @default(autoincrement())
+  entity_id            Int
+  requested_by_user_id Int?
+  provider             String   @default("gemini")
+  model                String?
+  prompt               String?
+  response             String?
+  status               String   @default("completed")
+  error_message        String?
+  created_date         DateTime @default(now())
+
+  entity          Entity @relation(fields: [entity_id], references: [entity_id])
+  requestedByUser User?  @relation("AIRequestedBy", fields: [requested_by_user_id], references: [user_id], onDelete: SetNull)
+
+  @@index([entity_id, created_date])
+  @@index([requested_by_user_id])
 }
 
 model FileRepository {
-  file_id      Int    @id @default(autoincrement())
+  file_id      Int     @id @default(autoincrement())
   entity_id    Int
   parameter_id Int
   file_name    String
@@ -284,8 +343,13 @@ model User {
   name          String
   email         String   @unique
   password_hash String
-  role          String   @default("citizen")   // citizen | coordinator_area | coordinator_general | director | admin
-  assignedArea  String?                         // nullable, only relevant for coordinators
+  role          String   @default("citizen") // citizen | coordinator_area | coordinator_general | director | admin
+  assignedArea  String? // nullable, only relevant for coordinators
   created_date  DateTime @default(now())
   updated_date  DateTime @updatedAt
+
+  ownedEntities   Entity[]          @relation("EntityOwner")
+  auditLogs       AuditLog[]        @relation("AuditActor")
+  approvalHistory ApprovalHistory[] @relation("ApprovalActor")
+  aiExecutionLogs AIExecutionLog[]  @relation("AIRequestedBy")
 }
