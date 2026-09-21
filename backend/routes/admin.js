@@ -19,6 +19,84 @@ function parseUserId(value) {
   return parsed;
 }
 
+// ─── GET /admin/users — list all users (admin only) ────────────────────────
+router.get('/users', verifyToken, checkRole(['admin']), async (req, res, next) => {
+  try {
+    const page = req.query.page ? Math.max(1, Number(req.query.page)) : 1;
+    const limit = req.query.limit ? Math.min(100, Math.max(1, Number(req.query.limit))) : 20;
+    const skip = (page - 1) * limit;
+
+    const where = {};
+    if (req.query.role) where.role = req.query.role;
+    if (req.query.search) {
+      where.OR = [
+        { name: { contains: req.query.search, mode: 'insensitive' } },
+        { email: { contains: req.query.search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [total, users] = await Promise.all([
+      prisma.user.count({ where }),
+      prisma.user.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { created_date: 'desc' },
+        select: {
+          user_id: true,
+          name: true,
+          email: true,
+          role: true,
+          assignedArea: true,
+          created_date: true,
+          updated_date: true,
+        },
+      }),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: users,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// ─── GET /admin/users/:id — fetch a single user (admin only) ───────────────
+router.get('/users/:id', verifyToken, checkRole(['admin']), async (req, res, next) => {
+  try {
+    const userId = parseUserId(req.params.id);
+    const user = await prisma.user.findUnique({
+      where: { user_id: userId },
+      select: {
+        user_id: true,
+        name: true,
+        email: true,
+        role: true,
+        assignedArea: true,
+        created_date: true,
+        updated_date: true,
+      },
+    });
+
+    if (!user) {
+      return next(createHttpError(`User with id ${userId} was not found.`, 404));
+    }
+
+    return res.status(200).json({ success: true, data: user });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// ─── POST /admin/users/:id/role — update role (admin only) ─────────────────
 router.post('/users/:id/role', verifyToken, checkRole(['admin']), async (req, res, next) => {
   try {
     const userId = parseUserId(req.params.id);

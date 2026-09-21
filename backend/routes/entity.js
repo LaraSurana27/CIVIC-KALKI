@@ -520,4 +520,40 @@ router.post('/:id/fire-rules', verifyToken, checkRole(['admin', 'director']), as
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /entities/:id/audit
+// Fetch audit log for a single entity.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/:id/audit', async (req, res, next) => {
+  try {
+    const entityId = parsePositiveInt(req.params.id, 'id');
+
+    const entity = await prisma.entity.findUnique({ where: { entity_id: entityId } });
+    if (!entity) {
+      return next(createError(`Entity with id ${entityId} was not found.`, 404));
+    }
+
+    const [auditLogs, approvalHistory] = await Promise.all([
+      prisma.auditLog.findMany({
+        where: { entity_id: entityId },
+        orderBy: { datetime: 'desc' },
+        include: {
+          actorUser: { select: { user_id: true, name: true, email: true, role: true } },
+        },
+      }),
+      prisma.approvalHistory.findMany({
+        where: { entity_id: entityId },
+        orderBy: { created_date: 'desc' },
+        include: {
+          actorUser: { select: { user_id: true, name: true, email: true, role: true } },
+        },
+      }),
+    ]);
+
+    return res.status(200).json({ success: true, data: { auditLogs, approvalHistory } });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 module.exports = router;
