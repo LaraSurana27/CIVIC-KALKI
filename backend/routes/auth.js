@@ -1,10 +1,10 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../db');
+const { verifyToken } = require('../middleware/auth');
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 function createHttpError(message, statusCode) {
   const error = new Error(message);
@@ -134,6 +134,69 @@ router.post('/login', async (req, res, next) => {
         token,
       },
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+
+// ── POST /auth/change-password ────────────────────────────────────────────────
+// Requires authentication. Verifies current password before updating.
+router.post('/change-password', verifyToken, async (req, res, next) => {
+  try {
+    const { current_password, new_password } = req.body;
+
+    if (!current_password || typeof current_password !== 'string') {
+      return next(createHttpError('"current_password" is required.', 400));
+    }
+    if (!new_password || typeof new_password !== 'string' || new_password.length < 8) {
+      return next(createHttpError('"new_password" must be at least 8 characters long.', 400));
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { user_id: req.user.user_id },
+    });
+
+    if (!user) {
+      return next(createHttpError('User not found.', 404));
+    }
+
+    const valid = await bcrypt.compare(current_password, user.password_hash);
+    if (!valid) {
+      return next(createHttpError('Current password is incorrect.', 401));
+    }
+
+    const newHash = await bcrypt.hash(new_password, 12);
+
+    await prisma.user.update({
+      where: { user_id: req.user.user_id },
+      data: { password_hash: newHash },
+    });
+
+    return res.status(200).json({ success: true, message: 'Password updated successfully.' });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// ── GET /auth/me ──────────────────────────────────────────────────────────────
+// Returns the current authenticated user's safe profile info.
+router.get('/me', verifyToken, async (req, res, next) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { user_id: req.user.user_id },
+      select: {
+        user_id: true,
+        name: true,
+        email: true,
+        role: true,
+        assignedArea: true,
+        created_date: true,
+        updated_date: true,
+      },
+    });
+    if (!user) return next(createHttpError('User not found.', 404));
+    return res.status(200).json({ success: true, data: user });
   } catch (error) {
     return next(error);
   }

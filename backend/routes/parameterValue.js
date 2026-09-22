@@ -13,9 +13,7 @@
 
 const express = require('express');
 const router = express.Router({ mergeParams: true });
-const { PrismaClient } = require('@prisma/client');
-
-const prisma = new PrismaClient();
+const prisma = require('../db');
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MAX_VALUES_PER_REQUEST = 200;

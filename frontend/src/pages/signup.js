@@ -12,59 +12,41 @@ export function renderSignup() {
   const app = document.getElementById('app');
   app.innerHTML = `
     <div class="auth-layout">
-      <div class="auth-panel-left">
-        <div class="auth-brand">
-          <div class="brand-icon">CK</div>
-          <div class="brand-name">CIVIC KALKI</div>
+      <div class="auth-card">
+        <div class="auth-card-brand">
+          <img src="/logo.png" alt="CivicKalki" style="height:44px; width:auto; object-fit:contain;" />
         </div>
-        <h1>Civic Operations Platform</h1>
-        <p>Register as a citizen to submit issues and track their progress through the civic pipeline.</p>
+
+        <h2>Create an account</h2>
+        <p class="subtitle">Join as a citizen to get started</p>
         
-        <div class="auth-feature-list">
-          <div class="auth-feature">
-            <div class="auth-feature-icon">✓</div>
-            <div class="auth-feature-text">Explain your problem once</div>
+        <form id="signup-form">
+          <div class="form-group">
+            <label class="form-label" for="name">Full Name</label>
+            <input type="text" id="name" class="form-control" placeholder="Enter your full name" required autofocus>
           </div>
-          <div class="auth-feature">
-            <div class="auth-feature-icon">✓</div>
-            <div class="auth-feature-text">Track status in real-time</div>
+          
+          <div class="form-group">
+            <label class="form-label" for="email">Email address</label>
+            <input type="email" id="email" class="form-control" placeholder="Enter your email" required>
           </div>
-          <div class="auth-feature">
-            <div class="auth-feature-icon">✓</div>
-            <div class="auth-feature-text">Transparent workflow routing</div>
+          
+          <div class="form-group">
+            <label class="form-label" for="password">Password</label>
+            <input type="password" id="password" class="form-control" placeholder="Create a password (min 8 chars)" minlength="8" required>
           </div>
+          
+          <button type="submit" class="btn btn-primary btn-full mt-4" id="signup-btn">
+            Create Account
+          </button>
+        </form>
+        
+        <div class="mt-6 text-center text-sm text-secondary">
+          Already have an account? <a href="/login" class="text-link">Sign in</a>
         </div>
-      </div>
-      
-      <div class="auth-panel-right">
-        <div class="auth-form-container">
-          <h2>Create an account</h2>
-          <p class="subtitle">Join as a citizen to get started</p>
-          
-          <form id="signup-form">
-            <div class="form-group">
-              <label class="form-label">Full Name</label>
-              <input type="text" id="name" class="form-control" placeholder="Enter your full name" required autofocus>
-            </div>
-            
-            <div class="form-group">
-              <label class="form-label">Email address</label>
-              <input type="email" id="email" class="form-control" placeholder="Enter your email" required>
-            </div>
-            
-            <div class="form-group">
-              <label class="form-label">Password</label>
-              <input type="password" id="password" class="form-control" placeholder="Create a password (min 8 chars)" minlength="8" required>
-            </div>
-            
-            <button type="submit" class="btn btn-primary btn-full mt-4" id="signup-btn">
-              Create Account
-            </button>
-          </form>
-          
-          <div class="mt-6 text-center text-sm text-secondary">
-            Already have an account? <a href="/login" class="text-link">Sign in</a>
-          </div>
+
+        <div class="mt-4 text-center">
+          <a href="/" style="font-size:0.8rem; color:var(--text-muted); text-decoration:none;">← Back to Public Home</a>
         </div>
       </div>
     </div>

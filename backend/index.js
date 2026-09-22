@@ -35,6 +35,9 @@ const authRoutes = require('./routes/auth');
 const entityRoutes = require('./routes/entity');
 const formRoutes = require('./routes/form');
 const parameterValueRoutes = require('./routes/parameterValue');
+const reportRoutes = require('./routes/report');
+const moduleBuilderRoutes = require('./routes/moduleBuilder');
+const jurisdictionRoutes = require('./routes/jurisdiction');
 
 // ── Body parsing (limit set to prevent oversized payloads) ──
 app.use(express.json({ limit: '1mb' }));
@@ -48,8 +51,11 @@ app.get('/health', (_req, res) => {
 // ── Route mounting ──
 app.use('/auth', authRoutes);
 app.use('/admin', adminRoutes);
+app.use('/jurisdictions', jurisdictionRoutes);
 app.use('/entities', entityRoutes);
 app.use('/entities/:id/values', parameterValueRoutes);   // ParameterValue storage
+app.use('/reports', reportRoutes); // ReportMaster runtime execution
+app.use('/module-builder', moduleBuilderRoutes); // Phase 3A atomic module deployment
 app.use('/', formRoutes);          // mounts /forms, /sections, /subsections
 
 // ── Global error handler (must be last) ──

@@ -9,13 +9,16 @@
     "seed": "node seed.js",
     "workflow-test": "node workflow_test.js",
     "test": "jest --runInBand",
-    "test:ci": "jest --runInBand --reporters=default"
+    "test:ci": "jest --runInBand --reporters=default",
+    "import:geo": "node scripts/importGeoData.js",
+    "import:geo:all": "node scripts/importGeoData.js --all"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@prisma/client": "^6.19.3",
     "bcrypt": "^5.1.1",
     "cors": "^2.8.6",
@@ -24,6 +27,7 @@
     "jsonwebtoken": "^9.0.2"
   },
   "devDependencies": {
+    "country-state-city": "^3.2.1",
     "jest": "^30.5.1",
     "node-fetch": "^2.7.0",
     "prisma": "^6.19.3",

@@ -13,9 +13,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
-
-const prisma = new PrismaClient();
+const prisma = require('../db');
 
 // ── Helper: create an HTTP-aware error ────────────────────────────────────────
 function createError(message, statusCode) {
@@ -49,6 +47,53 @@ function parseNonNegativeInt(value, fieldName) {
   }
   return parsed;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /forms/metadata
+// Returns system-wide metadata: Domains, EntityTypes, Forms, and Relationship Rules.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/forms/metadata', async (req, res, next) => {
+  try {
+    const [domains, entityTypes, rules] = await Promise.all([
+      prisma.domain.findMany({
+        include: {
+          entityTypes: {
+            include: {
+              formMasters: { select: { form_id: true, form_name: true, status: true } },
+              _count: { select: { entities: true } },
+            },
+          },
+        },
+        orderBy: { domain_id: 'asc' },
+      }),
+      prisma.entityType.findMany({
+        include: {
+          domain: true,
+          formMasters: { select: { form_id: true, form_name: true, status: true } },
+          _count: { select: { entities: true } },
+        },
+        orderBy: { entity_type_id: 'asc' },
+      }),
+      prisma.entityRelationshipRule.findMany({
+        include: {
+          sourceEntityType: { select: { entity_type_id: true, name: true } },
+          targetEntityType: { select: { entity_type_id: true, name: true } },
+        },
+      }),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        domains,
+        entityTypes,
+        rules,
+      },
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /forms
@@ -178,7 +223,7 @@ router.post('/sections/:sectionId/subsections', async (req, res, next) => {
 router.post('/subsections/:subsectionId/parameters', async (req, res, next) => {
   try {
     const subsectionId = parsePositiveInt(req.params.subsectionId, 'subsectionId');
-    const { category_id, field_type, control_type, mandatory, validation_rule } = req.body;
+    const { category_id, field_type, control_type, mandatory, validation_rule, field_key, label, options } = req.body;
 
     if (category_id === undefined || category_id === null) {
       return next(createError('"category_id" is required.', 400));
@@ -209,8 +254,11 @@ router.post('/subsections/:subsectionId/parameters', async (req, res, next) => {
       data: {
         subsection_id: subsectionId,
         category_id: parsedCategoryId,
+        field_key: field_key ? String(field_key).trim() : null,
+        label: label ? String(label).trim() : null,
         field_type: field_type ? String(field_type).trim() : null,
         control_type: control_type ? String(control_type).trim() : null,
+        options: options || null,
         mandatory: isMandatory,
         validation_rule: validation_rule ? String(validation_rule).trim() : null,
       },
@@ -231,7 +279,7 @@ router.get('/forms/:formId/schema', async (req, res, next) => {
   try {
     const formId = parsePositiveInt(req.params.formId, 'formId');
 
-    const form = await prisma.formMaster.findUnique({
+    let form = await prisma.formMaster.findUnique({
       where: { form_id: formId },
       include: {
         entityType: {
@@ -245,8 +293,11 @@ router.get('/forms/:formId/schema', async (req, res, next) => {
                 parameters: {
                   select: {
                     parameter_id: true,
+                    field_key: true,
+                    label: true,
                     field_type: true,
                     control_type: true,
+                    options: true,
                     mandatory: true,
                     validation_rule: true,
                     category_id: true,
@@ -263,28 +314,75 @@ router.get('/forms/:formId/schema', async (req, res, next) => {
     });
 
     if (!form) {
-      return next(createError(`Form with id ${formId} was not found.`, 404));
+      form = await prisma.formMaster.findFirst({
+        where: { entity_type_id: formId },
+        include: {
+          entityType: {
+            select: { entity_type_id: true, name: true },
+          },
+          sections: {
+            orderBy: { display_order: 'asc' },
+            include: {
+              subsections: {
+                include: {
+                  parameters: {
+                    select: {
+                      parameter_id: true,
+                      field_key: true,
+                      label: true,
+                      field_type: true,
+                      control_type: true,
+                      options: true,
+                      mandatory: true,
+                      validation_rule: true,
+                      category_id: true,
+                      parameterCategory: {
+                        select: { category_id: true, category_name: true },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+    }
+
+    if (!form) {
+      return next(createError(`Form schema for ID or EntityType #${formId} was not found.`, 404));
     }
 
     // ── Shape the response to be clean and frontend-ready ─────────────────────
     const schema = {
       form_id: form.form_id,
       form_name: form.form_name,
+      name: form.form_name,
       version: form.version,
       status: form.status,
       entity_type: form.entityType,
       sections: form.sections.map((sec) => ({
         section_id: sec.section_id,
         section_name: sec.section_name,
+        title: sec.section_name,
         display_order: sec.display_order,
         subsections: sec.subsections.map((sub) => ({
           subsection_id: sub.subsection_id,
           subsection_name: sub.subsection_name,
+          title: sub.subsection_name,
           parameters: sub.parameters.map((p) => ({
             parameter_id: p.parameter_id,
+            field_key: p.field_key,
+            label: p.label || p.field_key || `Parameter #${p.parameter_id}`,
             field_type: p.field_type,
+            data_type: p.field_type,
             control_type: p.control_type,
+            options: p.options,
+            meta_options: Array.isArray(p.options)
+              ? p.options
+              : (p.options && p.options.choices ? p.options.choices : null),
             mandatory: p.mandatory,
+            is_mandatory: p.mandatory,
             validation_rule: p.validation_rule,
             category: p.parameterCategory,
           })),

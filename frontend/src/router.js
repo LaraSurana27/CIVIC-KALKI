@@ -1,6 +1,6 @@
 // ── SPA Client-side Router ────────────────────────────────────────────────
 // Uses the History API. Routes are defined as { path, handler }.
-// Supports simple :param segments.
+// Supports simple :param segments and query parameters.
 
 const routes = [];
 let notFoundHandler = () => {};
@@ -14,7 +14,17 @@ export function onNotFound(handler) {
 }
 
 function matchRoute(pathname) {
-  for (const route of routes) {
+  // Sort routes so static routes are tested before parameterized routes
+  // (e.g. /entities/new takes precedence over /entities/:id)
+  const sortedRoutes = [...routes].sort((a, b) => {
+    const aHasParam = a.path.includes(':');
+    const bHasParam = b.path.includes(':');
+    if (!aHasParam && bHasParam) return -1;
+    if (aHasParam && !bHasParam) return 1;
+    return 0;
+  });
+
+  for (const route of sortedRoutes) {
     const paramNames = [];
     const regexStr = route.path
       .replace(/:([^/]+)/g, (_, name) => { paramNames.push(name); return '([^/]+)'; })
@@ -24,7 +34,7 @@ function matchRoute(pathname) {
     if (match) {
       const params = {};
       paramNames.forEach((name, i) => { params[name] = decodeURIComponent(match[i + 1]); });
-      return { handler: route.handler, params };
+      return { handler: route.handler, params, path: route.path };
     }
   }
   return null;
@@ -32,21 +42,30 @@ function matchRoute(pathname) {
 
 export function navigate(path) {
   window.history.pushState({}, '', path);
-  render(path);
+  render(window.location.href);
 }
 
-function render(pathname) {
+function render(pathOrUrl = window.location.href) {
+  // Parse URL properly using standard browser URL API
+  const url = new URL(pathOrUrl, window.location.origin);
+  let pathname = url.pathname;
+  if (pathname.length > 1 && pathname.endsWith('/')) {
+    pathname = pathname.slice(0, -1);
+  }
+
   const matched = matchRoute(pathname);
   if (matched) {
-    matched.handler(matched.params);
+    matched.handler(matched.params, url.searchParams);
   } else {
     notFoundHandler();
   }
 }
 
 export function initRouter() {
+  window.navigate = navigate;
+
   // Handle browser back/forward
-  window.addEventListener('popstate', () => render(window.location.pathname));
+  window.addEventListener('popstate', () => render(window.location.href));
 
   // Intercept all <a href> clicks inside #app (event delegation)
   document.getElementById('app').addEventListener('click', (e) => {
@@ -58,6 +77,6 @@ export function initRouter() {
     navigate(href);
   });
 
-  // Initial render
-  render(window.location.pathname);
+  // Initial render with current location
+  render(window.location.href);
 }

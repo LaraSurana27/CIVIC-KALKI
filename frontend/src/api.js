@@ -39,8 +39,10 @@ async function request(method, path, body = null, options = {}) {
 
 // ── Auth ─────────────────────────────────────────────────────────────────
 export const auth = {
-  login:  (email, password)          => request('POST', '/auth/login',  { email, password }),
-  signup: (name, email, password)    => request('POST', '/auth/signup', { name, email, password }),
+  login:          (email, password)             => request('POST', '/auth/login',           { email, password }),
+  signup:         (name, email, password)       => request('POST', '/auth/signup',          { name, email, password }),
+  changePassword: (current_password, new_password) => request('POST', '/auth/change-password', { current_password, new_password }),
+  me:             ()                            => request('GET',  '/auth/me'),
 };
 
 // ── Admin ─────────────────────────────────────────────────────────────────
@@ -59,13 +61,19 @@ export const entities = {
     const q = new URLSearchParams(params).toString();
     return request('GET', `/entities${q ? '?' + q : ''}`);
   },
+  listTypes:  ()                => request('GET',    '/entities/entity-types'),
+  createType: (body)            => request('POST',   '/entities/entity-types', body),
+  createRule: (body)            => request('POST',   '/entities/rules', body),
   get:        (id)              => request('GET',    `/entities/${id}`),
   create:     (body)            => request('POST',   '/entities', body),
   update:     (id, body)        => request('PUT',    `/entities/${id}`, body),
   softDelete: (id)              => request('DELETE', `/entities/${id}`),
   transition: (id, to_status, reason) => request('POST', `/entities/${id}/transition`, { to_status, reason }),
   fireRules:  (id, eventType)   => request('POST',   `/entities/${id}/fire-rules`, { eventType }),
+  aiAnalysis: (id)              => request('POST',   `/entities/${id}/ai-analysis`),
   audit:      (id)              => request('GET',    `/entities/${id}/audit`),
+  getLineage: (id)              => request('GET',    `/entities/${id}/lineage`),
+  workflow:   (id)              => request('GET',    `/entities/${id}/workflow`),
 };
 
 // ── Parameter Values ─────────────────────────────────────────────────────
@@ -77,6 +85,7 @@ export const values = {
 
 // ── Forms ─────────────────────────────────────────────────────────────────
 export const forms = {
+  getMetadata:      ()                     => request('GET',  '/forms/metadata'),
   schema:           (formId)               => request('GET',  `/forms/${formId}/schema`),
   create:           (body)                 => request('POST', '/forms', body),
   addSection:       (formId, body)         => request('POST', `/forms/${formId}/sections`, body),
@@ -84,5 +93,45 @@ export const forms = {
   addParameter:     (subsectionId, body)   => request('POST', `/subsections/${subsectionId}/parameters`, body),
 };
 
+// ── Reports ───────────────────────────────────────────────────────────────
+export const reports = {
+  list:    (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request('GET', `/reports${q ? '?' + q : ''}`);
+  },
+  get:     (id)          => request('GET', `/reports/${id}`),
+  create:  (body)        => request('POST', '/reports', body),
+  execute: (id, params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request('GET', `/reports/${id}/execute${q ? '?' + q : ''}`);
+  },
+};
+
+// ── Module Builder ────────────────────────────────────────────────────────
+export const moduleBuilder = {
+  validate: (body) => request('POST', '/module-builder/validate', body),
+  deploy:   (body) => request('POST', '/module-builder/deploy', body),
+};
+
+// ── Jurisdictions ─────────────────────────────────────────────────────────
+export const jurisdictions = {
+  /** List children of a parent (or roots if parent_id omitted) */
+  list: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request('GET', `/jurisdictions${q ? '?' + q : ''}`);
+  },
+  /** Full active tree (Country → … → Ward) */
+  tree: () => request('GET', '/jurisdictions?tree=true'),
+  /** Single node with ancestor path */
+  get: (id) => request('GET', `/jurisdictions/${id}`),
+  /** Admin-only create */
+  create: (body) => request('POST', '/jurisdictions', body),
+  /** Admin-only update */
+  update: (id, body) => request('PUT', `/jurisdictions/${id}`, body),
+  /** Admin-only non-destructive deactivation */
+  deactivate: (id) => request('DELETE', `/jurisdictions/${id}`),
+};
+
 // ── Health ────────────────────────────────────────────────────────────────
 export const health = () => request('GET', '/health');
+

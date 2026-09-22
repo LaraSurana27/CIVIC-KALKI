@@ -48,17 +48,19 @@ model EntityType {
 }
 
 model Entity {
-  entity_id      Int     @id @default(autoincrement())
-  entity_type_id Int
-  owner_user_id  Int?
-  name           String
-  location       String?
-  area           String?
-  status         String?
+  entity_id       Int     @id @default(autoincrement())
+  entity_type_id  Int
+  owner_user_id   Int?
+  jurisdiction_id Int?
+  name            String
+  location        String?
+  area            String?
+  status          String?
 
   // Relations to parent
-  entityType EntityType @relation(fields: [entity_type_id], references: [entity_type_id])
-  owner      User?      @relation("EntityOwner", fields: [owner_user_id], references: [user_id], onDelete: SetNull)
+  entityType   EntityType          @relation(fields: [entity_type_id], references: [entity_type_id])
+  owner        User?               @relation("EntityOwner", fields: [owner_user_id], references: [user_id], onDelete: SetNull)
+  jurisdiction JurisdictionMaster? @relation(fields: [jurisdiction_id], references: [jurisdiction_id], onDelete: SetNull)
 
   // Inverse relations for children
   parameterValues  ParameterValue[]
@@ -69,7 +71,30 @@ model Entity {
 
   @@index([owner_user_id])
   @@index([area, status])
+  @@index([jurisdiction_id])
 }
+
+model JurisdictionMaster {
+  jurisdiction_id Int     @id @default(autoincrement())
+  name            String
+  type            String  // 'country' | 'state' | 'city' | 'ward' (arbitrary depth supported)
+  parent_id       Int?
+  code            String?
+  status          String  @default("active") // 'active' | 'inactive'
+
+  // Non-destructive self-relation
+  parent   JurisdictionMaster?  @relation("JurisdictionHierarchy", fields: [parent_id], references: [jurisdiction_id], onDelete: Restrict)
+  children JurisdictionMaster[] @relation("JurisdictionHierarchy")
+
+  // Inverse relation to Entity
+  entities Entity[]
+
+  @@unique([parent_id, name])
+  @@index([parent_id])
+  @@index([type])
+  @@index([status])
+}
+
 
 model EntityRelationshipRule {
   rule_id               Int     @id @default(autoincrement())

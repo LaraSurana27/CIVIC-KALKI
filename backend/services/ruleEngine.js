@@ -11,9 +11,7 @@
  * further rules, up to MAX_CHAIN_DEPTH to prevent infinite loops.
  */
 
-const { PrismaClient } = require('@prisma/client');
-
-const prisma = new PrismaClient();
+const prisma = require('../db');
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MAX_CHAIN_DEPTH = 3;
@@ -86,13 +84,14 @@ async function checkAndFireRules(entityId, eventType, depth = 0) {
     const newEntityName = `${sourceEntity.name} - ${targetTypeName}`;
     const newStatus = rule.auto_approve ? 'approved' : 'pending';
 
-    // ── Atomic: create entity + audit log in one transaction ──────────────
+    // ── Atomic: create entity + audit log + default parameters in one transaction ──────────────
     const { newEntity, auditEntry } = await prisma.$transaction(async (tx) => {
       const created = await tx.entity.create({
         data: {
           entity_type_id: rule.target_entity_type_id,
           name: newEntityName,
           location: sourceEntity.location, // inherit location from source
+          area: sourceEntity.area, // inherit area from source
           status: newStatus,
         },
         include: {
@@ -101,6 +100,58 @@ async function checkAndFireRules(entityId, eventType, depth = 0) {
           },
         },
       });
+
+      // Find parameters for target entity type and auto-seed parent references
+      const targetForms = await tx.formMaster.findMany({
+        where: { entity_type_id: rule.target_entity_type_id },
+        select: {
+          sections: {
+            select: {
+              subsections: {
+                select: {
+                  parameters: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      const allParams = [];
+      for (const form of targetForms) {
+        for (const sec of form.sections) {
+          for (const sub of sec.subsections) {
+            allParams.push(...sub.parameters);
+          }
+        }
+      }
+
+      for (const param of allParams) {
+        const key = String(param.field_key || '').toLowerCase();
+        let valToInsert = null;
+        if (key === 'linked_movement_id' || key === 'movement_id') {
+          valToInsert = String(sourceEntity.entity_id);
+        } else if (key === 'reference_number') {
+          valToInsert = `REF-${sourceEntity.entity_id}-${created.entity_id}`;
+        }
+
+        if (valToInsert !== null) {
+          await tx.parameterValue.upsert({
+            where: {
+              entity_id_parameter_id: {
+                entity_id: created.entity_id,
+                parameter_id: param.parameter_id,
+              },
+            },
+            update: { value: valToInsert },
+            create: {
+              entity_id: created.entity_id,
+              parameter_id: param.parameter_id,
+              value: valToInsert,
+            },
+          });
+        }
+      }
 
       const audit = await tx.auditLog.create({
         data: {
