@@ -228,6 +228,12 @@ router.post('/subsections/:subsectionId/parameters', async (req, res, next) => {
     if (category_id === undefined || category_id === null) {
       return next(createError('"category_id" is required.', 400));
     }
+    if (!field_key || typeof field_key !== 'string' || field_key.trim() === '') {
+      return next(createError('"field_key" is required and must be a non-empty string.', 400));
+    }
+    if (!label || typeof label !== 'string' || label.trim() === '') {
+      return next(createError('"label" is required and must be a non-empty string.', 400));
+    }
 
     const parsedCategoryId = parsePositiveInt(category_id, 'category_id');
 
@@ -254,8 +260,8 @@ router.post('/subsections/:subsectionId/parameters', async (req, res, next) => {
       data: {
         subsection_id: subsectionId,
         category_id: parsedCategoryId,
-        field_key: field_key ? String(field_key).trim() : null,
-        label: label ? String(label).trim() : null,
+        field_key: String(field_key).trim(),
+        label: String(label).trim(),
         field_type: field_type ? String(field_type).trim() : null,
         control_type: control_type ? String(control_type).trim() : null,
         options: options || null,
@@ -354,6 +360,7 @@ router.get('/forms/:formId/schema', async (req, res, next) => {
     }
 
     // ── Shape the response to be clean and frontend-ready ─────────────────────
+    const configuration_errors = [];
     const schema = {
       form_id: form.form_id,
       form_name: form.form_name,
@@ -370,24 +377,36 @@ router.get('/forms/:formId/schema', async (req, res, next) => {
           subsection_id: sub.subsection_id,
           subsection_name: sub.subsection_name,
           title: sub.subsection_name,
-          parameters: sub.parameters.map((p) => ({
-            parameter_id: p.parameter_id,
-            field_key: p.field_key,
-            label: p.label || p.field_key || `Parameter #${p.parameter_id}`,
-            field_type: p.field_type,
-            data_type: p.field_type,
-            control_type: p.control_type,
-            options: p.options,
-            meta_options: Array.isArray(p.options)
-              ? p.options
-              : (p.options && p.options.choices ? p.options.choices : null),
-            mandatory: p.mandatory,
-            is_mandatory: p.mandatory,
-            validation_rule: p.validation_rule,
-            category: p.parameterCategory,
-          })),
+          parameters: sub.parameters.reduce((acc, p) => {
+            const fieldKey = p.field_key ? String(p.field_key).trim() : '';
+            const paramLabel = p.label ? String(p.label).trim() : '';
+            if (!fieldKey || !paramLabel) {
+              configuration_errors.push(
+                `Parameter ${p.parameter_id} is missing a required field_key and/or label and was omitted from the form.`
+              );
+              return acc;
+            }
+            acc.push({
+              parameter_id: p.parameter_id,
+              field_key: fieldKey,
+              label: paramLabel,
+              field_type: p.field_type,
+              data_type: p.field_type,
+              control_type: p.control_type,
+              options: p.options,
+              meta_options: Array.isArray(p.options)
+                ? p.options
+                : (p.options && p.options.choices ? p.options.choices : null),
+              mandatory: p.mandatory,
+              is_mandatory: p.mandatory,
+              validation_rule: p.validation_rule,
+              category: p.parameterCategory,
+            });
+            return acc;
+          }, []),
         })),
       })),
+      configuration_errors,
     };
 
     return res.status(200).json({ success: true, data: schema });

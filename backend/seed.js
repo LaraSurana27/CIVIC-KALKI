@@ -192,6 +192,57 @@ async function seedModule({
   return { entityType, formMaster };
 }
 
+/**
+ * Remove obsolete Movement ParameterMaster rows that duplicate Entity-level
+ * fields (title, area, landmark) or have blank field_key and label.
+ * Scoped to the Movement EntityType form only.
+ */
+async function cleanupObsoleteMovementParameters(entityType) {
+  if (!entityType) return;
+
+  const formMaster = await prisma.formMaster.findFirst({
+    where: { entity_type_id: entityType.entity_type_id },
+    include: {
+      sections: {
+        include: {
+          subsections: {
+            include: { parameters: true },
+          },
+        },
+      },
+    },
+  });
+  if (!formMaster) return;
+
+  const obsoleteKeys = new Set(['title', 'area', 'landmark']);
+  const obsoleteIds = [];
+
+  for (const section of formMaster.sections) {
+    for (const subsection of section.subsections) {
+      for (const param of subsection.parameters) {
+        const key = String(param.field_key || '').trim().toLowerCase();
+        const label = String(param.label || '').trim();
+        const blankMeta = !key && !label;
+        if (obsoleteKeys.has(key) || blankMeta) {
+          obsoleteIds.push(param.parameter_id);
+        }
+      }
+    }
+  }
+
+  if (obsoleteIds.length === 0) {
+    console.log('No obsolete Movement ParameterMaster rows to remove.');
+    return;
+  }
+
+  await prisma.fileRepository.deleteMany({ where: { parameter_id: { in: obsoleteIds } } });
+  await prisma.parameterValue.deleteMany({ where: { parameter_id: { in: obsoleteIds } } });
+  await prisma.parameterMaster.deleteMany({ where: { parameter_id: { in: obsoleteIds } } });
+  console.log(
+    `Removed ${obsoleteIds.length} obsolete Movement ParameterMaster row(s): ${obsoleteIds.join(', ')}`
+  );
+}
+
 (async () => {
   try {
     // ── 0. Ensure Domain exists ──
@@ -214,10 +265,7 @@ async function seedModule({
         sectionName: 'Basic Information',
         subsectionName: 'Identity',
         parameters: [
-          { field_key: 'title', label: 'Movement Title', field_type: 'text', control_type: 'input', mandatory: true, validation_rule: 'required|max:100' },
           { field_key: 'description', label: 'Description', field_type: 'textarea', control_type: 'textarea', mandatory: true, validation_rule: 'required' },
-          { field_key: 'area', label: 'Area', field_type: 'select', control_type: 'dropdown', options: { choices: ['Sector 5', 'Sector 12', 'Unassigned'] }, mandatory: true, validation_rule: 'required' },
-          { field_key: 'landmark', label: 'Landmark', field_type: 'text', control_type: 'input', mandatory: false, validation_rule: 'max:160' },
           { field_key: 'reported_on', label: 'Reported Date', field_type: 'date', control_type: 'datepicker', mandatory: true, validation_rule: 'required|date' },
         ],
       },
@@ -309,6 +357,9 @@ async function seedModule({
     for (const mod of modulesToSeed) {
       const seeded = await seedModule({ ...mod, domain_id: domain.domain_id });
       console.log(`Seeded module: "${mod.entityTypeName}" -> Form ID: ${seeded.formMaster.form_id}`);
+      if (mod.entityTypeName === 'Movement') {
+        await cleanupObsoleteMovementParameters(seeded.entityType);
+      }
     }
 
     // ── 2. Seed EntityRelationshipRule (Movement approved -> Auto-creates Grievance) ──

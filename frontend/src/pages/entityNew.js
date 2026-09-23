@@ -19,6 +19,21 @@ let currentCapability = null;
 /** @type {JurisdictionSelector|null} */
 let _jurisdictionSelectorInstance = null;
 
+const UNIVERSAL_PARAM_KEYS = new Set([
+  'title',
+  'name',
+  'area',
+  'jurisdiction',
+  'jurisdiction_id',
+  'location',
+  'landmark',
+]);
+
+function isUniversalEntityParam(param) {
+  const key = String(param.field_key || '').trim().toLowerCase();
+  return UNIVERSAL_PARAM_KEYS.has(key);
+}
+
 export async function renderEntityNew(params = {}, searchParams = null) {
   if (!requireAuth(navigate)) return;
   
@@ -138,6 +153,9 @@ function renderForm(container, schema) {
       </div>
       
       <div id="form-validation-alert" class="alert alert-danger hidden m-4"></div>
+      ${Array.isArray(schema.configuration_errors) && schema.configuration_errors.length > 0
+        ? `<div class="alert alert-warning m-4">${escapeHtml(schema.configuration_errors.join(' '))}</div>`
+        : ''}
 
       <form id="dynamic-form" style="padding:24px;">
   `;
@@ -181,6 +199,8 @@ function renderForm(container, schema) {
       html += `<div class="form-row mt-3">`;
       
       (sub.parameters || []).forEach(param => {
+        if (isUniversalEntityParam(param)) return;
+        if (!String(param.field_key || '').trim() || !String(param.label || '').trim()) return;
         const isMandatory = param.mandatory || param.is_mandatory;
         const required = isMandatory ? 'required' : '';
         const reqSpan = isMandatory ? '<span class="required">*</span>' : '';
