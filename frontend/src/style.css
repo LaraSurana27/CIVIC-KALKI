@@ -1150,3 +1150,349 @@ select.form-control { cursor: pointer; }
   .home-stats-bar { grid-template-columns: 1fr; }
 }
 
+/* ── Form Sections & Subsections (Metadata-Driven Form Engine) ────────── */
+.form-section {
+  padding-bottom: 24px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+.form-section:last-child {
+  border-bottom: none;
+}
+.form-section-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.form-section-title::before {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 18px;
+  border-radius: 2px;
+  background: var(--primary);
+  flex-shrink: 0;
+}
+.form-section-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.form-subsection {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--gray-50);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.form-subsection-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.conditional-field {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+/* ── File Upload Field ────────────────────────────────────────────────── */
+.file-upload-wrapper {
+  position: relative;
+}
+.file-input {
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.file-input::file-selector-button {
+  padding: 6px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--primary-border);
+  background: var(--primary-light);
+  color: var(--primary);
+  font-weight: 600;
+  font-size: 0.8rem;
+  cursor: pointer;
+  margin-right: 12px;
+  transition: all 0.15s ease;
+}
+.file-input::file-selector-button:hover {
+  background: var(--primary);
+  color: white;
+}
+.file-upload-status {
+  font-size: 0.8rem;
+  padding: 4px 8px;
+  border-radius: var(--radius);
+}
+.file-upload-status.success {
+  color: var(--green-700);
+  background: var(--green-50);
+}
+.file-upload-status.error {
+  color: var(--red-700);
+  background: var(--red-50);
+}
+
+/* ── Responsive form row for flex-based parameter layout ──────────────── */
+@media (max-width: 640px) {
+  .form-row {
+    flex-direction: column !important;
+  }
+  .form-row > .form-group {
+    flex: 1 1 100% !important;
+    min-width: 100% !important;
+  }
+}
+
+/* ============================================================
+   Jurisdiction Engine — Searchable Combobox Selector
+   ============================================================ */
+
+.jurisdiction-selector-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: 100%;
+}
+
+.jsel-group {
+  flex: 1 1 calc(25% - 12px);
+  min-width: 180px;
+  margin-bottom: 0;
+  position: relative;
+}
+
+@media (max-width: 768px) {
+  .jsel-group {
+    flex: 1 1 100%;
+    min-width: 100%;
+  }
+}
+
+.jsel-combobox {
+  position: relative;
+  width: 100%;
+}
+
+.jsel-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--surface, #ffffff);
+  border: 1px solid var(--border-strong, #cbd5e1);
+  border-radius: var(--radius-md, 6px);
+  cursor: pointer;
+  font-size: 0.929rem;
+  color: var(--text-primary, #0f172a);
+  min-height: 40px;
+  transition: border-color var(--transition, 0.15s ease), box-shadow var(--transition, 0.15s ease);
+  user-select: none;
+}
+
+.jsel-trigger:hover:not(.is-disabled) {
+  border-color: var(--primary, #ff5a36);
+}
+
+.jsel-trigger:focus,
+.jsel-trigger.is-active {
+  border-color: var(--primary, #ff5a36);
+  box-shadow: 0 0 0 3px rgba(255, 90, 54, 0.18);
+  outline: none;
+}
+
+.jsel-trigger.is-disabled {
+  background: var(--gray-100, #f1f5f9);
+  color: var(--text-muted, #94a3b8);
+  cursor: not-allowed;
+  border-color: var(--border, #e2e8f0);
+}
+
+.jsel-trigger-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+  font-weight: 500;
+}
+
+.jsel-trigger-text.is-placeholder {
+  color: var(--text-muted, #94a3b8);
+  font-weight: 400;
+}
+
+.jsel-trigger-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+}
+
+.jsel-clear-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--gray-200, #e2e8f0);
+  color: var(--gray-600, #475569);
+  cursor: pointer;
+  border: none;
+  font-size: 11px;
+  line-height: 1;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+
+.jsel-clear-btn:hover {
+  background: var(--red-100, #fee2e2);
+  color: var(--red-600, #dc2626);
+}
+
+.jsel-chevron {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted, #94a3b8);
+  transition: transform 0.2s ease;
+}
+
+.jsel-combobox.is-open .jsel-chevron {
+  transform: rotate(180deg);
+}
+
+.jsel-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--surface, #ffffff);
+  border: 1px solid var(--border-strong, #cbd5e1);
+  border-radius: var(--radius-md, 6px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08);
+  z-index: 1050;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: 320px;
+  animation: jselFadeIn 0.15s ease-out;
+}
+
+.jsel-combobox.is-open .jsel-dropdown {
+  display: flex;
+}
+
+@keyframes jselFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.jsel-search-wrapper {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border, #e2e8f0);
+  background: var(--gray-50, #f8fafc);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.jsel-search-icon {
+  color: var(--text-muted, #94a3b8);
+  flex-shrink: 0;
+}
+
+.jsel-search-input {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 0.857rem;
+  border: 1px solid var(--border-strong, #cbd5e1);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--surface, #ffffff);
+  color: var(--text-primary, #0f172a);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.jsel-search-input:focus {
+  border-color: var(--primary, #ff5a36);
+  box-shadow: 0 0 0 2px rgba(255, 90, 54, 0.15);
+}
+
+.jsel-options-list {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px 0;
+  margin: 0;
+  list-style: none;
+}
+
+.jsel-option {
+  padding: 8px 12px;
+  font-size: 0.875rem;
+  color: var(--text-primary, #0f172a);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  transition: background 0.1s ease;
+}
+
+.jsel-option:hover,
+.jsel-option.is-focused {
+  background: var(--blue-50, #fff5f2);
+  color: var(--primary-dark, #c83214);
+}
+
+.jsel-option.is-selected {
+  background: var(--blue-100, #ffe4dc);
+  color: var(--primary, #ff5a36);
+  font-weight: 600;
+}
+
+.jsel-option-badge {
+  font-size: 0.72rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--gray-200, #e2e8f0);
+  color: var(--gray-600, #475569);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.jsel-divider {
+  padding: 6px 12px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted, #94a3b8);
+  background: var(--gray-100, #f1f5f9);
+}
+
+.jsel-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.857rem;
+}
+
+.jsel-loading {
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.857rem;
+}

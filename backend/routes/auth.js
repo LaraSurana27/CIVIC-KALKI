@@ -18,6 +18,7 @@ function signToken(user) {
       user_id: user.user_id,
       name: user.name,
       role: user.role,
+      assignedArea: user.assignedArea || null,
       assigned_area: user.assignedArea || null,
     },
     process.env.JWT_SECRET || 'development-secret-change-me',

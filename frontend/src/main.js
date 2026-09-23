@@ -28,6 +28,9 @@ addRoute('/admin', renderAdmin);
 addRoute('/module-builder', renderModuleBuilder);
 addRoute('/reports', renderReports);
 addRoute('/profile', renderProfile);
+addRoute('/director', renderDashboard);
+addRoute('/coordinator', renderDashboard);
+addRoute('/workspace', renderDashboard);
 
 onNotFound(() => {
   document.getElementById('app').innerHTML = `

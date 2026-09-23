@@ -87,5 +87,25 @@ describe('AI Decision Layer: POST /entities/:id/ai-analysis', () => {
       expect(res.body.success).toBe(false);
       expect(latestLog.status).toBe('failed');
     }
+  }, 30000);
+
+  afterAll(async () => {
+    try {
+      const aiEnts = await prisma.entity.findMany({
+        where: { name: { startsWith: 'AI Test' } },
+        select: { entity_id: true },
+      });
+      const ids = aiEnts.map((e) => e.entity_id);
+      if (ids.length > 0) {
+        await prisma.aIExecutionLog.deleteMany({ where: { entity_id: { in: ids } } });
+        await prisma.parameterValue.deleteMany({ where: { entity_id: { in: ids } } });
+        await prisma.auditLog.deleteMany({ where: { entity_id: { in: ids } } });
+        await prisma.approvalHistory.deleteMany({ where: { entity_id: { in: ids } } });
+        await prisma.entity.deleteMany({ where: { entity_id: { in: ids } } });
+      }
+      await prisma.user.deleteMany({ where: { email: 'ai.citizen@example.com' } });
+    } catch (e) {
+      // ignore
+    }
   });
 });

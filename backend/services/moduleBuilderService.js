@@ -22,7 +22,7 @@ function createHttpError(message, statusCode = 400) {
 
 const ALLOWED_ROLES = ['citizen', 'coordinator_area', 'coordinator_general', 'director', 'admin'];
 const ALLOWED_METRICS = ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX'];
-const ALLOWED_FIELD_TYPES = ['text', 'textarea', 'number', 'date', 'select', 'checkbox'];
+const ALLOWED_FIELD_TYPES = ['text', 'textarea', 'number', 'date', 'select', 'checkbox', 'file', 'email', 'phone'];
 
 /**
  * Validate a declarative module definition before deployment.

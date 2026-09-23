@@ -1,4 +1,4 @@
-import { getUser, getRole, roleLabel, clearAuth } from '../auth.js';
+import { getUser, getRole, roleLabel, clearAuth, refreshUser } from '../auth.js';
 import { navigate } from '../router.js';
 import { getCapabilityPresentation, capabilityIcon } from '../utils/terminology.js';
 
@@ -82,6 +82,10 @@ export function renderLayout(contentHTML, pageTitle = '', metaTypes = []) {
     }).join('');
   }
 
+  const userRoleDisplay = role === 'coordinator_area' && user.assignedArea
+    ? `${roleLabel(role)} • ${user.assignedArea}`
+    : roleLabel(role);
+
   return `
     <div class="app-layout">
       <!-- Sidebar -->
@@ -111,7 +115,7 @@ export function renderLayout(contentHTML, pageTitle = '', metaTypes = []) {
             <div class="user-avatar">${escapeHtml(user.name.charAt(0).toUpperCase())}</div>
             <div style="flex:1; overflow:hidden;">
               <div class="user-name truncate">${escapeHtml(user.name)}</div>
-              <div class="user-role truncate">${escapeHtml(roleLabel(role))}</div>
+              <div class="user-role truncate" title="${escapeHtml(userRoleDisplay)}">${escapeHtml(userRoleDisplay)}</div>
             </div>
           </div>
         </div>
@@ -174,6 +178,9 @@ export function renderLayout(contentHTML, pageTitle = '', metaTypes = []) {
 }
 
 export function attachLayoutEvents() {
+  // Sync latest user profile (role, assignedArea) asynchronously
+  refreshUser().catch(() => {});
+
   const topbarUserBtn = document.getElementById('topbar-user-btn');
   const userDropdownMenu = document.getElementById('user-dropdown-menu');
 

@@ -6,6 +6,8 @@ import { navigate } from '../router.js';
 import { getCapabilityPresentation } from '../utils/terminology.js';
 import { JurisdictionSelector } from '../components/jurisdictionSelector.js';
 
+const API_BASE = '/api';
+
 function escapeHtml(str) {
   return String(str || '').replace(/[&<>"']/g, c =>
     ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])
@@ -22,11 +24,19 @@ let _jurisdictionSelectorInstance = null;
 const UNIVERSAL_PARAM_KEYS = new Set([
   'title',
   'name',
+  'movement_title',
   'area',
   'jurisdiction',
   'jurisdiction_id',
   'location',
   'landmark',
+  'reported_date',
+  'reported_on',
+  'contact_person',
+  'contact_phone',
+  'contact_email',
+  'priority_level',
+  'volunteer_coordinator',
 ]);
 
 function isUniversalEntityParam(param) {
@@ -139,6 +149,99 @@ async function _mountJurisdictionSelector() {
   await _jurisdictionSelectorInstance.init();
 }
 
+// ── Field Renderer — handles all field types from metadata ──────────────────
+function renderField(param) {
+  const isMandatory = param.mandatory || param.is_mandatory;
+  const required = isMandatory ? 'required' : '';
+  const reqSpan = isMandatory ? '<span class="required">*</span>' : '';
+  const nameAttr = `param_${param.parameter_id}`;
+  const fieldType = (param.field_type || param.data_type || 'text').toLowerCase();
+  const label = escapeHtml(param.label || param.field_key);
+
+  // Check conditional dependency (e.g. volunteer fields depending on requires_volunteers === 'Yes')
+  const dependsOn = param.options?.depends_on;
+  let dependsAttr = '';
+  let conditionalClass = '';
+  let initialStyle = '';
+  if (dependsOn && dependsOn.field_key) {
+    dependsAttr = `data-depends-key="${escapeHtml(dependsOn.field_key)}" data-depends-val="${escapeHtml(dependsOn.value)}"`;
+    conditionalClass = 'conditional-field';
+    initialStyle = 'display:none;';
+  }
+
+  // Determine if this field should be full-width
+  const isFullWidth = ['textarea', 'file'].includes(fieldType);
+  const widthStyle = isFullWidth ? 'flex:1 1 100%; min-width:100%;' : 'flex:1 1 calc(50% - 8px); min-width:200px;';
+
+  let fieldHtml = '';
+
+  switch (fieldType) {
+    case 'textarea':
+      fieldHtml = `<textarea name="${nameAttr}" class="form-control" rows="3" ${required} placeholder="Enter ${label.toLowerCase()}..."></textarea>`;
+      break;
+
+    case 'number':
+      fieldHtml = `<input type="number" name="${nameAttr}" class="form-control" ${required} placeholder="0">`;
+      break;
+
+    case 'date':
+      fieldHtml = `<input type="date" name="${nameAttr}" class="form-control" ${required}>`;
+      break;
+
+    case 'email':
+      fieldHtml = `<input type="email" name="${nameAttr}" class="form-control" ${required} placeholder="email@example.com">`;
+      break;
+
+    case 'phone':
+      fieldHtml = `<input type="tel" name="${nameAttr}" class="form-control" ${required} placeholder="+91 XXXXX XXXXX">`;
+      break;
+
+    case 'checkbox':
+      fieldHtml = `
+        <div class="check-group mt-2">
+          <input type="checkbox" name="${nameAttr}" id="${nameAttr}" value="true">
+          <label for="${nameAttr}">Yes</label>
+        </div>
+      `;
+      break;
+
+    case 'select': {
+      const opts = param.meta_options || (param.options ? (Array.isArray(param.options) ? param.options : param.options.choices) : null) || ['Option 1', 'Option 2'];
+      const defaultVal = param.options && param.options.default ? param.options.default : '';
+      fieldHtml = `<select name="${nameAttr}" class="form-control" ${required}>
+        <option value="">-- Select --</option>
+        ${opts.map(o => `<option value="${escapeHtml(o)}" ${o === defaultVal ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}
+      </select>`;
+      break;
+    }
+
+    case 'file':
+      fieldHtml = `
+        <div class="file-upload-wrapper" id="file-wrap-${param.parameter_id}">
+          <input type="file" name="${nameAttr}" id="file-${param.parameter_id}" 
+            class="form-control file-input" 
+            data-parameter-id="${param.parameter_id}"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.csv,.txt,.zip"
+            ${required}>
+          <div class="file-upload-info mt-1" style="font-size:0.75rem; color:var(--text-muted);">
+            Max 10MB • PDF, Word, Excel, Images, CSV, ZIP
+          </div>
+          <div id="file-status-${param.parameter_id}" class="file-upload-status mt-1" style="display:none;"></div>
+        </div>
+      `;
+      break;
+
+    default: // text and any unknown
+      fieldHtml = `<input type="text" name="${nameAttr}" class="form-control" ${required} placeholder="Enter ${label.toLowerCase()}...">`;
+      break;
+  }
+
+  return `<div class="form-group ${conditionalClass}" ${dependsAttr} style="${initialStyle} ${widthStyle}">
+    <label class="form-label">${label} ${reqSpan}</label>
+    ${fieldHtml}
+  </div>`;
+}
+
 function renderForm(container, schema) {
   if (!schema || !schema.sections || schema.sections.length === 0) {
     container.innerHTML = `<div class="alert alert-warning">This capability has no form fields configured yet.</div>`;
@@ -159,89 +262,92 @@ function renderForm(container, schema) {
 
       <form id="dynamic-form" style="padding:24px;">
   `;
-  
-  // Section 1: General Request Identity
-  html += `
-    <div class="form-section mb-6">
-      <div class="form-section-title">About the Request</div>
-      <div class="form-section-subtitle">Basic identification fields for your submission</div>
-      
-      <div class="form-row mt-4">
-        <div class="form-group" style="flex:1;">
-          <label class="form-label" for="base_name">Title / Summary <span class="required">*</span></label>
-          <input type="text" id="base_name" name="_base_name" class="form-control" required placeholder="Brief title summarizing the request or issue">
-        </div>
-      </div>
-      <div class="form-group mt-3">
-        <label class="form-label">Jurisdiction <span class="required">*</span></label>
-        <div id="jurisdiction-selector-mount"></div>
-      </div>
-      <div class="form-group mt-3">
-        <label class="form-label" for="base_location">Location Details / Street Address</label>
-        <input type="text" id="base_location" name="_base_location" class="form-control" placeholder="Specific street address or landmark">
-      </div>
-    </div>
-  `;
 
-  // Section 2: Dynamic Form Sections from FormMaster
-  schema.sections.forEach(section => {
+  let titleRendered = false;
+  let jurisdictionRendered = false;
+
+  schema.sections.forEach((section, sIdx) => {
+    const secName = (section.section_name || section.title || '').trim();
+    const isFirstSection = sIdx === 0;
+    const isWhereSection = secName.toLowerCase().includes('where') || secName.toLowerCase().includes('location');
+
     html += `
-      <div class="form-section mb-6">
-        <div class="form-section-title">${escapeHtml(section.section_name || section.title)}</div>
+      <div class="form-section mb-6" data-section-name="${escapeHtml(secName)}">
+        <div class="form-section-title">${escapeHtml(secName)}</div>
         ${section.description ? `<div class="form-section-subtitle">${escapeHtml(section.description)}</div>` : ''}
     `;
-    
+
+    // 1. Universal Title / Summary — Placed in Section 1 ("About the Initiative")
+    if (isFirstSection && !titleRendered) {
+      html += `
+        <div class="form-row mt-4" style="display:flex; flex-wrap:wrap; gap:16px;">
+          <div class="form-group" style="flex:1 1 100%; min-width:100%;">
+            <label class="form-label" for="base_name">Title / Summary <span class="required">*</span></label>
+            <input type="text" id="base_name" name="_base_name" class="form-control" required placeholder="Brief title summarizing the initiative">
+          </div>
+        </div>
+      `;
+      titleRendered = true;
+    }
+
+    // 2. Universal Jurisdiction & Location — Placed in Section 2 ("Where is it?")
+    if (isWhereSection && !jurisdictionRendered) {
+      html += `
+        <div class="form-row mt-4" style="display:flex; flex-direction:column; gap:16px;">
+          <div class="form-group" style="width:100%;">
+            <label class="form-label">Jurisdiction <span class="required">*</span></label>
+            <div id="jurisdiction-selector-mount"></div>
+          </div>
+          <div class="form-group" style="width:100%;">
+            <label class="form-label" for="base_location">Specific Location / Address</label>
+            <input type="text" id="base_location" name="_base_location" class="form-control" placeholder="Specific street address or building/area (optional)">
+          </div>
+        </div>
+      `;
+      jurisdictionRendered = true;
+    }
+
+    // Render parameters for this section
     (section.subsections || []).forEach(sub => {
       if (sub.subsection_name && sub.subsection_name !== 'Main') {
         html += `<div class="form-subsection mt-3"><div class="form-subsection-title">${escapeHtml(sub.subsection_name)}</div>`;
       }
       
-      html += `<div class="form-row mt-3">`;
+      const sortedParams = [...(sub.parameters || [])].sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+      const validParams = sortedParams.filter(p => !isUniversalEntityParam(p) && String(p.field_key || '').trim() && String(p.label || '').trim());
       
-      (sub.parameters || []).forEach(param => {
-        if (isUniversalEntityParam(param)) return;
-        if (!String(param.field_key || '').trim() || !String(param.label || '').trim()) return;
-        const isMandatory = param.mandatory || param.is_mandatory;
-        const required = isMandatory ? 'required' : '';
-        const reqSpan = isMandatory ? '<span class="required">*</span>' : '';
-        const nameAttr = `param_${param.parameter_id}`;
-        const fieldType = (param.field_type || param.data_type || 'text').toLowerCase();
-        
-        html += `<div class="form-group" style="flex:1; min-width:200px;">
-          <label class="form-label">${escapeHtml(param.label || param.field_key)} ${reqSpan}</label>`;
-          
-        if (fieldType === 'textarea') {
-          html += `<textarea name="${nameAttr}" class="form-control" rows="3" ${required}></textarea>`;
-        } else if (fieldType === 'number') {
-          html += `<input type="number" name="${nameAttr}" class="form-control" ${required}>`;
-        } else if (fieldType === 'date') {
-          html += `<input type="date" name="${nameAttr}" class="form-control" ${required}>`;
-        } else if (fieldType === 'checkbox') {
-          html += `
-            <div class="check-group mt-2">
-              <input type="checkbox" name="${nameAttr}" id="${nameAttr}" value="true">
-              <label for="${nameAttr}">Yes</label>
-            </div>
-          `;
-        } else if (fieldType === 'select') {
-          const opts = param.meta_options || (param.options ? (Array.isArray(param.options) ? param.options : param.options.choices) : null) || ['Option 1', 'Option 2'];
-          html += `<select name="${nameAttr}" class="form-control" ${required}>
-            <option value="">-- Select Option --</option>
-            ${opts.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('')}
-          </select>`;
-        } else {
-          html += `<input type="text" name="${nameAttr}" class="form-control" ${required}>`;
-        }
-        
+      if (validParams.length > 0) {
+        html += `<div class="form-row mt-3" style="display:flex; flex-wrap:wrap; gap:16px;">`;
+        validParams.forEach(param => {
+          html += renderField(param);
+        });
         html += `</div>`;
-      });
+      }
       
-      html += `</div>`;
       if (sub.subsection_name && sub.subsection_name !== 'Main') html += `</div>`;
     });
-    
+
     html += `</div>`;
   });
+
+  // Fallback if schema had no "Where is it?" section in metadata
+  if (!jurisdictionRendered) {
+    html += `
+      <div class="form-section mb-6" data-section-name="Where is it?">
+        <div class="form-section-title">Where is it?</div>
+        <div class="form-row mt-4" style="display:flex; flex-direction:column; gap:16px;">
+          <div class="form-group" style="width:100%;">
+            <label class="form-label">Jurisdiction <span class="required">*</span></label>
+            <div id="jurisdiction-selector-mount"></div>
+          </div>
+          <div class="form-group" style="width:100%;">
+            <label class="form-label" for="base_location">Specific Location / Address</label>
+            <input type="text" id="base_location" name="_base_location" class="form-control" placeholder="Specific street address or building/area (optional)">
+          </div>
+        </div>
+      </div>
+    `;
+  }
 
   html += `
         <div class="form-section mt-6" style="border-bottom:none; margin-bottom:0; padding-bottom:0;">
@@ -258,7 +364,56 @@ function renderForm(container, schema) {
   `;
   
   container.innerHTML = html;
-  document.getElementById('dynamic-form').addEventListener('submit', handleFormSubmit);
+  
+  const formEl = document.getElementById('dynamic-form');
+  formEl.addEventListener('submit', handleFormSubmit);
+  attachConditionalHandlers(formEl, schema);
+}
+
+function attachConditionalHandlers(formEl, schema) {
+  const allParams = [];
+  (schema.sections || []).forEach(sec => {
+    (sec.subsections || []).forEach(sub => {
+      (sub.parameters || []).forEach(p => allParams.push(p));
+    });
+  });
+
+  const conditionalEls = formEl.querySelectorAll('.conditional-field');
+  if (conditionalEls.length === 0) return;
+
+  function evaluateConditions() {
+    conditionalEls.forEach(el => {
+      const depKey = el.getAttribute('data-depends-key');
+      const depVal = el.getAttribute('data-depends-val');
+      if (!depKey) return;
+
+      const controllingParam = allParams.find(p => p.field_key === depKey);
+      if (!controllingParam) return;
+
+      const controllingInput = formEl.querySelector(`[name="param_${controllingParam.parameter_id}"]`);
+      if (!controllingInput) return;
+
+      const currentVal = String(controllingInput.value || '').trim();
+      const isMatch = currentVal.toLowerCase() === String(depVal).toLowerCase();
+
+      if (isMatch) {
+        el.style.display = '';
+        el.querySelectorAll('input, select, textarea').forEach(inp => {
+          inp.disabled = false;
+        });
+      } else {
+        el.style.display = 'none';
+        el.querySelectorAll('input, select, textarea').forEach(inp => {
+          inp.disabled = true;
+          inp.value = '';
+        });
+      }
+    });
+  }
+
+  formEl.addEventListener('change', evaluateConditions);
+  formEl.addEventListener('input', evaluateConditions);
+  evaluateConditions();
 }
 
 async function handleFormSubmit(e) {
@@ -277,8 +432,10 @@ async function handleFormSubmit(e) {
     const formData = new FormData(e.target);
     const data = Object.fromEntries(formData.entries());
     
-    if (!data._base_name) {
-      throw new Error('Title is a required field.');
+    if (!data._base_name || !data._base_name.trim()) {
+      const titleInput = document.getElementById('base_name');
+      if (titleInput) titleInput.focus();
+      throw new Error('Title / Summary is a required field.');
     }
 
     // Resolve jurisdiction from the dynamic selector
@@ -287,13 +444,35 @@ async function handleFormSubmit(e) {
       throw new Error('Please select a jurisdiction (at minimum a Country) before submitting.');
     }
 
+    // Validate all active mandatory metadata parameters
+    if (formSchema && formSchema.sections) {
+      for (const sec of formSchema.sections) {
+        for (const sub of sec.subsections || []) {
+          for (const param of sub.parameters || []) {
+            if (isUniversalEntityParam(param)) continue;
+            if (param.mandatory || param.is_mandatory) {
+              const inputEl = e.target.querySelector(`[name="param_${param.parameter_id}"]`);
+              if (inputEl && !inputEl.disabled) {
+                const val = inputEl.type === 'file'
+                  ? (inputEl.files && inputEl.files.length > 0)
+                  : String(inputEl.value || '').trim();
+                if (!val) {
+                  inputEl.focus();
+                  throw new Error(`"${param.label || param.field_key}" is a required field.`);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     // 1. Create generic Entity (status set to submitted for real workflow start)
-    // jurisdiction_id is canonical; area is synchronized from the display path leaf.
     const entityPayload = {
       entity_type_id: currentEntityTypeId,
       name: data._base_name.trim(),
       jurisdiction_id: jselVal.jurisdiction_id,
-      area: jselVal.display_path,      // synchronized from jurisdiction selector
+      area: jselVal.display_path,
       location: data._base_location ? data._base_location.trim() : null,
       status: 'submitted',
     };
@@ -301,11 +480,14 @@ async function handleFormSubmit(e) {
     const entityRes = await apiEntities.create(entityPayload);
     const entityId = entityRes.data.entity_id;
     
-    // 2. Submit parameter values batch
+    // 2. Submit parameter values batch (excluding file params & disabled conditional params)
     const valuesPayload = [];
     for (const [key, value] of formData.entries()) {
       if (key.startsWith('param_')) {
         const paramId = Number(key.replace('param_', ''));
+        const inputEl = e.target.querySelector(`[name="${key}"]`);
+        if (inputEl && (inputEl.type === 'file' || inputEl.disabled)) continue;
+        
         if (value !== undefined && value !== null && String(value).trim() !== '') {
           valuesPayload.push({
             parameter_id: paramId,
@@ -317,6 +499,33 @@ async function handleFormSubmit(e) {
     
     if (valuesPayload.length > 0) {
       await apiValues.create(entityId, valuesPayload);
+    }
+
+    // 3. Upload files for file-type parameters
+    const fileInputs = e.target.querySelectorAll('input[type="file"]');
+    for (const fileInput of fileInputs) {
+      if (fileInput.files && fileInput.files.length > 0) {
+        const paramId = fileInput.getAttribute('data-parameter-id');
+        if (!paramId) continue;
+
+        const uploadData = new FormData();
+        uploadData.append('entity_id', entityId);
+        uploadData.append('parameter_id', paramId);
+        for (const file of fileInput.files) {
+          uploadData.append('files', file);
+        }
+
+        try {
+          const token = localStorage.getItem('auth_token');
+          await fetch(`${API_BASE}/files/upload`, {
+            method: 'POST',
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+            body: uploadData,
+          });
+        } catch (uploadErr) {
+          console.warn('File upload warning:', uploadErr);
+        }
+      }
     }
     
     toastSuccess('Request submitted successfully!');

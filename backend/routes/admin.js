@@ -22,17 +22,21 @@ function parseUserId(value) {
 router.get('/users', verifyToken, checkRole(['admin']), async (req, res, next) => {
   try {
     const page = req.query.page ? Math.max(1, Number(req.query.page)) : 1;
-    const limit = req.query.limit ? Math.min(100, Math.max(1, Number(req.query.limit))) : 20;
+    const limit = req.query.limit ? Math.min(500, Math.max(1, Number(req.query.limit))) : 50;
     const skip = (page - 1) * limit;
 
     const where = {};
     if (req.query.role) where.role = req.query.role;
-    if (req.query.search) {
+    if (req.query.search && String(req.query.search).trim()) {
+      const q = String(req.query.search).trim();
       where.OR = [
-        { name: { contains: req.query.search, mode: 'insensitive' } },
-        { email: { contains: req.query.search, mode: 'insensitive' } },
+        { name: { contains: q, mode: 'insensitive' } },
+        { email: { contains: q, mode: 'insensitive' } },
+        { assignedArea: { contains: q, mode: 'insensitive' } },
       ];
     }
+
+    const orderBy = req.query.sort === 'created_desc' ? { created_date: 'desc' } : { user_id: 'asc' };
 
     const [total, users] = await Promise.all([
       prisma.user.count({ where }),
@@ -40,7 +44,7 @@ router.get('/users', verifyToken, checkRole(['admin']), async (req, res, next) =
         where,
         skip,
         take: limit,
-        orderBy: { created_date: 'desc' },
+        orderBy,
         select: {
           user_id: true,
           name: true,

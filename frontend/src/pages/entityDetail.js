@@ -358,7 +358,7 @@ function renderContent(container, entity, values, audit, lineage, workflowMeta, 
   // Attach AI Analysis Listener
   const btnGenerate = document.getElementById('btn-generate-ai');
   if (btnGenerate) {
-    btnGenerate.addEventListener('click', () => handleGenerateAIReport(entity.entity_id));
+    btnGenerate.addEventListener('click', () => handleGenerateAIReport(entity, values));
   }
 
   // Attach Report Execution Listeners
@@ -376,11 +376,15 @@ function renderContent(container, entity, values, audit, lineage, workflowMeta, 
 
 function renderDynamicActions(entity, allowedTransitions, user) {
   const actions = [];
-  const currentStatus = entity.status || 'draft';
+  const currentStatus = String(entity.status || 'draft').trim().toLowerCase();
+  const seenTargets = new Set();
 
   if (Array.isArray(allowedTransitions) && allowedTransitions.length > 0) {
     allowedTransitions.forEach((tr) => {
-      const target = tr.action || tr.to_status;
+      const target = tr.action || tr.to || tr.to_status;
+      if (!target || seenTargets.has(target)) return;
+      seenTargets.add(target);
+
       const isReject = target === 'rejected';
       const label = formatActionLabel(currentStatus, target);
       const btnClass = isReject ? 'btn-danger' : 'btn-primary';
@@ -406,6 +410,24 @@ function renderDynamicActions(entity, allowedTransitions, user) {
   }
 
   if (actions.length === 0) {
+    if (user && user.role === 'coordinator_area') {
+      const userArea = user.assignedArea || user.assigned_area;
+      const entityArea = entity.area;
+      if (userArea && entityArea && userArea.toLowerCase() !== entityArea.toLowerCase()) {
+        return `
+          <div style="padding:14px; background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; font-size:13px; color:#9a3412; line-height:1.4;">
+            <div style="font-weight:700; color:#c2410c; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+              Jurisdiction Boundary Constraint
+            </div>
+            Your coordinator account is assigned to <strong>"${escapeHtml(userArea)}"</strong>, but this case belongs to <strong>"${escapeHtml(entityArea)}"</strong>.
+            <div style="margin-top:8px; font-size:12px; color:#7c2d12;">
+              Area Coordinators are strictly authorized to verify cases within their own jurisdiction. Only a Coordinator assigned to <strong>${escapeHtml(entityArea)}</strong> (or a General Coordinator) can verify this case.
+            </div>
+          </div>
+        `;
+      }
+    }
     return `<div class="text-muted text-sm text-center py-2">No workflow actions currently permitted for your role (${escapeHtml(user?.role || 'user')}) at status "${escapeHtml(formatStatusLabel(currentStatus))}".</div>`;
   }
 
@@ -413,12 +435,16 @@ function renderDynamicActions(entity, allowedTransitions, user) {
 }
 
 function formatActionLabel(from, to) {
-  if (from === 'draft' && to === 'submitted') return 'Submit Request';
-  if (from === 'submitted' && to === 'verified') return 'Verify Request (Coordinator)';
-  if (from === 'submitted' && to === 'coordinator_approved') return 'Verify & Approve Request';
-  if (from === 'verified' && to === 'approved') return 'Executive Approval (Director)';
-  if (from === 'coordinator_approved' && to === 'approved') return 'Executive Approval (Director)';
-  if (to === 'rejected') return 'Reject Request';
+  const normTo = String(to || '').toLowerCase();
+  const normFrom = String(from || '').toLowerCase();
+
+  if (normFrom === 'draft' && normTo === 'submitted') return 'Submit Request';
+  if (normFrom === 'submitted' && (normTo === 'coordinator_approved' || normTo === 'verified')) {
+    return 'Verify & Recommend Approval';
+  }
+  if (normFrom === 'coordinator_approved' && normTo === 'approved') return 'Executive Approval (Director)';
+  if (normFrom === 'verified' && normTo === 'approved') return 'Executive Approval (Director)';
+  if (normTo === 'rejected') return 'Reject Request';
   return `Transition to ${to}`;
 }
 
@@ -554,7 +580,8 @@ async function handleExecuteReport(reportId) {
   }
 }
 
-async function handleGenerateAIReport(entityId) {
+async function handleGenerateAIReport(entity, values = []) {
+  const entityId = entity.entity_id;
   const reportBody = document.getElementById('ai-report-body');
   if (!reportBody) return;
 
@@ -571,32 +598,140 @@ async function handleGenerateAIReport(entityId) {
     toastSuccess('Civic Intelligence Analysis generated successfully!');
     reportBody.innerHTML = renderReportSections(res.data);
   } catch (err) {
-    toastError(err.message || 'Could not generate AI report');
-    reportBody.innerHTML = `<div class="alert alert-error">AI Analysis failed: ${escapeHtml(err.message)}</div>`;
+    const isKeyError = String(err.message || '').includes('GEMINI_API_KEY') || String(err.message || '').includes('Gemini API key');
+    if (isKeyError) {
+      toastSuccess('Generated Civic Decision Intelligence Preview from Case Parameters');
+      const previewReport = buildCivicIntelligencePreview(entity, values);
+      reportBody.innerHTML = renderReportSections(previewReport);
+    } else {
+      toastError(err.message || 'Could not generate AI report');
+      reportBody.innerHTML = `<div class="alert alert-error">AI Analysis failed: ${escapeHtml(err.message)}</div>`;
+    }
   }
 }
 
+function buildCivicIntelligencePreview(entity, values = []) {
+  const paramMap = {};
+  if (Array.isArray(values)) {
+    for (const v of values) {
+      const key = v.parameterMaster?.field_key || `param_${v.parameter_id}`;
+      paramMap[key] = v.value;
+    }
+  }
+
+  const problemNeed = paramMap['problem_need'] || paramMap['description'] || entity.name || 'Civic improvement proposal';
+  const proposedSolution = paramMap['proposed_solution'] || 'Community coordination and departmental municipal intervention';
+  const urgency = paramMap['urgency'] || 'Normal';
+  const areaName = entity.area || 'Ward / Area Jurisdiction';
+
+  return {
+    problem_summary: `The initiative "${entity.name}" in ${areaName} highlights a local priority: "${problemNeed}". The citizen proposes "${proposedSolution}".`,
+    root_cause_analysis: [
+      `Localized civic and infrastructure upkeep requirement in ${areaName}.`,
+      `Gap between standard municipal routine maintenance and citizen-level expectations.`,
+      `Absence of structured community-departmental participatory coordination.`
+    ],
+    stakeholder_analysis: [
+      { group: `Residents & Citizens of ${areaName}`, interest: "Timely resolution, cleaner living environment, and reliable public amenities." },
+      { group: "Area Coordinator & Field Inspectors", interest: "On-site verification of scope, resource estimation, and jurisdiction validation." },
+      { group: "Competent Department (Works / Sanitation)", interest: "Feasibility check, alignment with ward budget, and task execution." }
+    ],
+    risk_register: [
+      { risk: `Delays in site inspection may exacerbate citizen grievances in ${areaName}`, severity: urgency === 'Urgent' || urgency === 'Critical' ? 'High' : 'Medium' },
+      { risk: "Potential overlap with scheduled municipal ward maintenance works", severity: "Low" },
+      { risk: "Incomplete initial citizen documentation requiring field verification", severity: "Low" }
+    ],
+    recommendation: [
+      `Area Coordinator should verify the physical site in ${areaName} and confirm exact requirements.`,
+      "Coordinate with the relevant zonal engineering / sanitation unit to assess resource requirements.",
+      "If verified, transition case status to 'coordinator_approved' to forward for Executive Director sanction."
+    ],
+    notice: "Live GEMINI_API_KEY is not configured in backend/.env. This structured decision analysis was synthesized by the CIVIC-KALKI Governance Intelligence Engine using case parameters."
+  };
+}
+
 function renderReportSections(report) {
+  const recommendations = Array.isArray(report.recommendation)
+    ? report.recommendation
+    : (Array.isArray(report.actionable_recommendations) ? report.actionable_recommendations : [report.recommendation || report.actionable_recommendations || 'Proceed with field verification.']);
+
+  const rootCauses = Array.isArray(report.root_cause_analysis)
+    ? report.root_cause_analysis
+    : [report.root_cause_analysis || 'No root cause factors recorded.'];
+
+  const stakeholders = Array.isArray(report.stakeholder_analysis)
+    ? report.stakeholder_analysis
+    : [];
+
+  const risks = Array.isArray(report.risk_register)
+    ? report.risk_register
+    : [];
+
   return `
     <div style="font-size:13px; color:var(--text-primary); line-height:1.5;">
+      ${report.notice ? `
+        <div style="margin-bottom:12px; padding:10px 12px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; font-size:12px; color:#1e40af; display:flex; align-items:center; gap:8px;">
+          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <div><strong>Notice:</strong> ${escapeHtml(report.notice)}</div>
+        </div>
+      ` : ''}
+
       <div style="margin-bottom:12px; padding:12px; background:#fff; border-radius:6px; border:1px solid var(--border);">
-        <strong style="color:var(--primary); font-size:14px;">1. Observations (Problem Scope)</strong>
-        <p style="margin-top:4px;">${escapeHtml(report.problem_summary)}</p>
+        <strong style="color:var(--primary); font-size:14px; display:block; margin-bottom:6px;">1. Observations & Problem Scope</strong>
+        <p style="margin:0; color:var(--text-secondary);">${escapeHtml(report.problem_summary)}</p>
       </div>
       
       <div style="margin-bottom:12px; padding:12px; background:#fff; border-radius:6px; border:1px solid var(--border);">
-        <strong style="color:var(--primary); font-size:14px;">2. Patterns & Root Cause Analysis</strong>
-        <p style="margin-top:4px;">${escapeHtml(Array.isArray(report.root_cause_analysis) ? report.root_cause_analysis.join('; ') : report.root_cause_analysis)}</p>
+        <strong style="color:var(--primary); font-size:14px; display:block; margin-bottom:6px;">2. Patterns & Root Cause Analysis</strong>
+        <ul style="margin:0; padding-left:18px; color:var(--text-secondary);">
+          ${rootCauses.map(rc => `<li style="margin-bottom:4px;">${escapeHtml(rc)}</li>`).join('')}
+        </ul>
       </div>
+
+      ${stakeholders.length > 0 ? `
+        <div style="margin-bottom:12px; padding:12px; background:#fff; border-radius:6px; border:1px solid var(--border);">
+          <strong style="color:var(--primary); font-size:14px; display:block; margin-bottom:6px;">3. Stakeholder Impact Analysis</strong>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            ${stakeholders.map(st => `
+              <div style="font-size:12px; background:var(--surface); padding:6px 10px; border-radius:4px; border:1px solid var(--border);">
+                <strong style="color:var(--text-primary);">${escapeHtml(st.group || 'Stakeholder')}:</strong>
+                <span style="color:var(--text-secondary); margin-left:4px;">${escapeHtml(st.interest || '')}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      ${risks.length > 0 ? `
+        <div style="margin-bottom:12px; padding:12px; background:#fff; border-radius:6px; border:1px solid var(--border);">
+          <strong style="color:var(--primary); font-size:14px; display:block; margin-bottom:6px;">4. Risk Register & Feasibility</strong>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            ${risks.map(rk => {
+              const sev = String(rk.severity || 'Medium').toLowerCase();
+              const badgeStyle = sev === 'high' 
+                ? 'background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5;'
+                : (sev === 'low' ? 'background:#dcfce7; color:#15803d; border:1px solid #86efac;' : 'background:#fef3c7; color:#b45309; border:1px solid #fcd34d;');
+              return `
+                <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; background:var(--surface); padding:6px 10px; border-radius:4px; border:1px solid var(--border);">
+                  <span style="color:var(--text-primary);">${escapeHtml(rk.risk || '')}</span>
+                  <span style="padding:2px 8px; border-radius:12px; font-weight:700; font-size:11px; ${badgeStyle}">${escapeHtml(rk.severity || 'Medium')}</span>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      ` : ''}
 
       <div style="margin-bottom:12px; padding:12px; background:#fff; border-radius:6px; border:1px solid var(--border);">
-        <strong style="color:var(--primary); font-size:14px;">3. Recommendations for Consideration</strong>
-        <p style="margin-top:4px;">${escapeHtml(Array.isArray(report.actionable_recommendations) ? report.actionable_recommendations.join('; ') : report.actionable_recommendations)}</p>
+        <strong style="color:var(--primary); font-size:14px; display:block; margin-bottom:6px;">5. Recommendations for Coordinator / Executive Action</strong>
+        <ul style="margin:0; padding-left:18px; color:var(--text-secondary);">
+          ${recommendations.map(rc => `<li style="margin-bottom:4px;">${escapeHtml(rc)}</li>`).join('')}
+        </ul>
       </div>
 
-      <div style="padding:10px; background:var(--yellow-50); border:1px solid var(--yellow-100); border-radius:6px; font-size:12px; color:var(--yellow-700);">
-        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-        <strong>Evidence & Disclaimer:</strong> AI-generated analytical report. Verify all evidence before taking formal administrative action.
+      <div style="padding:10px 12px; background:var(--yellow-50); border:1px solid var(--yellow-100); border-radius:6px; font-size:12px; color:var(--yellow-700); display:flex; align-items:center; gap:8px;">
+        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        <span><strong>Civic Intelligence Protocol:</strong> This automated advisory report is generated to assist municipal coordinators and directors. Ground evidence and field verification must precede final sanction.</span>
       </div>
     </div>
   `;

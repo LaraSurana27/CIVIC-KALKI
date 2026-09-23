@@ -44,7 +44,7 @@ function checkRole(allowedRoles) {
 
       const user = await prisma.user.findUnique({
         where: { user_id: Number(req.user.user_id) },
-        select: { role: true },
+        select: { role: true, assignedArea: true },
       });
 
       if (!user) {
@@ -56,6 +56,8 @@ function checkRole(allowedRoles) {
       }
 
       req.user.role = user.role;
+      req.user.assignedArea = user.assignedArea;
+      req.user.assigned_area = user.assignedArea;
       return next();
     } catch (error) {
       return next(error);

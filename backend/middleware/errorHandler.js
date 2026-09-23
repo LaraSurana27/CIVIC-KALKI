@@ -20,8 +20,8 @@ function errorHandler(err, req, res, _next) {
 
   // Safe message — stack trace is never exposed in responses
   const message =
-    statusCode < 500
-      ? err.message // client errors (4xx) are safe to surface
+    statusCode < 500 || err.isPublic
+      ? err.message // client errors (4xx) or explicitly public errors are safe to surface
       : 'An unexpected server error occurred. Please try again later.';
 
   res.status(statusCode).json({ success: false, error: message });

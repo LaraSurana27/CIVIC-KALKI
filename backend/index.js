@@ -38,6 +38,7 @@ const parameterValueRoutes = require('./routes/parameterValue');
 const reportRoutes = require('./routes/report');
 const moduleBuilderRoutes = require('./routes/moduleBuilder');
 const jurisdictionRoutes = require('./routes/jurisdiction');
+const fileRoutes = require('./routes/file');
 
 // ── Body parsing (limit set to prevent oversized payloads) ──
 app.use(express.json({ limit: '1mb' }));
@@ -57,6 +58,11 @@ app.use('/entities/:id/values', parameterValueRoutes);   // ParameterValue stora
 app.use('/reports', reportRoutes); // ReportMaster runtime execution
 app.use('/module-builder', moduleBuilderRoutes); // Phase 3A atomic module deployment
 app.use('/', formRoutes);          // mounts /forms, /sections, /subsections
+app.use('/files', fileRoutes);     // File upload engine
+
+// ── Serve uploaded files statically ──
+const path = require('path');
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ── Global error handler (must be last) ──
 app.use(errorHandler);

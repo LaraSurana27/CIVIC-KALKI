@@ -297,12 +297,14 @@ router.get('/forms/:formId/schema', async (req, res, next) => {
             subsections: {
               include: {
                 parameters: {
+                  orderBy: { display_order: 'asc' },
                   select: {
                     parameter_id: true,
                     field_key: true,
                     label: true,
                     field_type: true,
                     control_type: true,
+                    display_order: true,
                     options: true,
                     mandatory: true,
                     validation_rule: true,
@@ -332,12 +334,14 @@ router.get('/forms/:formId/schema', async (req, res, next) => {
               subsections: {
                 include: {
                   parameters: {
+                    orderBy: { display_order: 'asc' },
                     select: {
                       parameter_id: true,
                       field_key: true,
                       label: true,
                       field_type: true,
                       control_type: true,
+                      display_order: true,
                       options: true,
                       mandatory: true,
                       validation_rule: true,
@@ -393,6 +397,7 @@ router.get('/forms/:formId/schema', async (req, res, next) => {
               field_type: p.field_type,
               data_type: p.field_type,
               control_type: p.control_type,
+              display_order: p.display_order || 0,
               options: p.options,
               meta_options: Array.isArray(p.options)
                 ? p.options

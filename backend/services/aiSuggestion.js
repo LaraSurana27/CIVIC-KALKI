@@ -4,6 +4,7 @@
  */
 
 const prisma = require('../db');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 /**
  * Clean raw model response by removing markdown code block fences if present.
@@ -132,12 +133,13 @@ The JSON object must match this exact schema:
 
     const err = new Error('Gemini API key is not configured on the server. Please set GEMINI_API_KEY in backend/.env');
     err.statusCode = 500;
+    err.isPublic = true;
     err.logId = log.ai_execution_log_id;
     throw err;
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
 
   let rawResponseText = '';
   let parsedReport = null;
@@ -151,6 +153,10 @@ The JSON object must match this exact schema:
 
     const cleanedText = cleanJsonResponseText(rawResponseText);
     parsedReport = JSON.parse(cleanedText);
+
+    if (parsedReport && !parsedReport.recommendation && parsedReport.actionable_recommendations) {
+      parsedReport.recommendation = parsedReport.actionable_recommendations;
+    }
 
     if (!isValidReportSchema(parsedReport)) {
       throw new Error('Parsed JSON does not match required report schema.');
@@ -168,6 +174,10 @@ The JSON object must match this exact schema:
       const cleanedRetry = cleanJsonResponseText(rawResponseText);
       parsedReport = JSON.parse(cleanedRetry);
 
+      if (parsedReport && !parsedReport.recommendation && parsedReport.actionable_recommendations) {
+        parsedReport.recommendation = parsedReport.actionable_recommendations;
+      }
+
       if (!isValidReportSchema(parsedReport)) {
         throw new Error('Retry response still did not match required report schema.');
       }
@@ -183,7 +193,7 @@ The JSON object must match this exact schema:
       entity_id: Number(entityId),
       requested_by_user_id: requestedByUserId ? Number(requestedByUserId) : null,
       provider: 'gemini',
-      model: 'gemini-1.5-flash',
+      model: 'gemini-3.6-flash',
       prompt: promptText,
       response: rawResponseText || null,
       status: parsedReport ? 'completed' : 'failed',

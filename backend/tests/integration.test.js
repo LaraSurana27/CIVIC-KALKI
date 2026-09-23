@@ -80,4 +80,27 @@ describe('Integration: Auth + Workflow', () => {
     const resp = await request(app).post(`/entities/${id2}/transition`).set('Authorization', `Bearer ${coord.token}`).send({ to_status: 'coordinator_approved' });
     expect(resp.statusCode).toBe(400);
   }, 30000);
+
+  afterAll(async () => {
+    try {
+      await prisma.user.updateMany({
+        where: { email: 'demo.coord.area@example.com' },
+        data: { assignedArea: 'Kothrud' },
+      });
+      const testEnts = await prisma.entity.findMany({
+        where: { name: { startsWith: 'ITest Entity' } },
+        select: { entity_id: true },
+      });
+      const ids = testEnts.map((e) => e.entity_id);
+      if (ids.length > 0) {
+        await prisma.parameterValue.deleteMany({ where: { entity_id: { in: ids } } });
+        await prisma.auditLog.deleteMany({ where: { entity_id: { in: ids } } });
+        await prisma.approvalHistory.deleteMany({ where: { entity_id: { in: ids } } });
+        await prisma.entity.deleteMany({ where: { entity_id: { in: ids } } });
+      }
+      await prisma.user.deleteMany({ where: { email: { startsWith: 'itest_' } } });
+    } catch (e) {
+      // ignore
+    }
+  });
 });

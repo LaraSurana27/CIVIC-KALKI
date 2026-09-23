@@ -150,20 +150,24 @@ async function executeWorkflowTransition({
 
   const normalizedToStatus = String(toStatus).trim().toLowerCase();
 
-  // Fetch actor assigned area if coordinator
-  let actorAssignedArea = user.assignedArea || null;
-  if (!actorAssignedArea && user.user_id) {
+  // Fetch actor assigned area and role from DB if user_id is provided
+  let actorAssignedArea = user.assignedArea || user.assigned_area || null;
+  let actorRole = user.role;
+  if (user.user_id) {
     const dbUser = await prisma.user.findUnique({
       where: { user_id: Number(user.user_id) },
-      select: { assignedArea: true },
+      select: { assignedArea: true, role: true },
     });
-    actorAssignedArea = dbUser?.assignedArea || null;
+    if (dbUser) {
+      actorAssignedArea = dbUser.assignedArea || null;
+      if (dbUser.role) actorRole = dbUser.role;
+    }
   }
 
   const validation = await validateWorkflowTransition({
     entity,
     targetStatus: normalizedToStatus,
-    actorRole: user.role,
+    actorRole,
     actorUserId: user.user_id,
     actorAssignedArea,
   });

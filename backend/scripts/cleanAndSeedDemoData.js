@@ -107,19 +107,6 @@ async function cleanAndSeed() {
     const grievanceType = await prisma.entityType.findFirst({ where: { name: 'Grievance' } });
     const parkType = await prisma.entityType.findFirst({ where: { name: 'Park Renovation Request' } });
 
-    // Update any legacy area parameter in Movement to generic jurisdiction field type
-    if (movementType) {
-      const areaParam = await prisma.parameterMaster.findFirst({
-        where: { field_key: 'area', subsectionMaster: { sectionMaster: { formMaster: { entity_type_id: movementType.entity_type_id } } } },
-      });
-      if (areaParam) {
-        await prisma.parameterMaster.update({
-          where: { parameter_id: areaParam.parameter_id },
-          data: { field_key: 'jurisdiction', label: 'Jurisdiction', field_type: 'jurisdiction', control_type: 'cascading_dropdown' },
-        });
-      }
-    }
-
     // 4. Seed realistic Movements / Initiatives
     if (movementType) {
       const movements = [

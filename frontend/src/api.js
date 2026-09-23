@@ -132,6 +132,38 @@ export const jurisdictions = {
   deactivate: (id) => request('DELETE', `/jurisdictions/${id}`),
 };
 
+// ── Files ─────────────────────────────────────────────────────────────────
+export const files = {
+  /** Upload files for an entity parameter (multipart) */
+  upload: async (entityId, parameterId, fileList) => {
+    const token = getToken();
+    const formData = new FormData();
+    formData.append('entity_id', entityId);
+    formData.append('parameter_id', parameterId);
+    for (const file of fileList) {
+      formData.append('files', file);
+    }
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${BASE}/files/upload`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    const data = await res.json().catch(() => ({ success: false, error: 'Invalid response' }));
+    if (!res.ok) {
+      const err = new Error(data.error || `HTTP ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  },
+  /** List all files for an entity */
+  listByEntity: (entityId) => request('GET', `/files/entity/${entityId}`),
+  /** Get download URL for a file */
+  download: (fileId) => `${BASE}/files/${fileId}`,
+};
+
 // ── Health ────────────────────────────────────────────────────────────────
 export const health = () => request('GET', '/health');
 

@@ -572,21 +572,57 @@ router.get('/:id/workflow', verifyToken, async (req, res, next) => {
     }
 
     const rules = await getWorkflowMasterRules(entity.entity_type_id);
-    const actorAssignedArea = req.user.assignedArea || null;
+    let actorAssignedArea = req.user.assignedArea || req.user.assigned_area || null;
+    let actorRole = req.user.role;
+
+    if (req.user && req.user.user_id) {
+      const dbUser = await prisma.user.findUnique({
+        where: { user_id: Number(req.user.user_id) },
+        select: { role: true, assignedArea: true },
+      });
+      if (dbUser) {
+        actorRole = dbUser.role;
+        actorAssignedArea = dbUser.assignedArea || null;
+        req.user.role = dbUser.role;
+        req.user.assignedArea = dbUser.assignedArea;
+        req.user.assigned_area = dbUser.assignedArea;
+      }
+    }
 
     const allowed = [];
+    const seenActions = new Set();
+    const currentStatus = String(entity.status || 'draft').trim().toLowerCase();
+
     for (const rule of rules) {
+      const ruleTrigger = String(rule.trigger || '').trim().toLowerCase();
+      const ruleAction = String(rule.action || '').trim().toLowerCase();
+      const ruleStage = String(rule.stage || '').trim().toLowerCase();
+
+      // Only evaluate rules whose trigger matches the entity's current state
+      if (ruleTrigger !== currentStatus) continue;
+
+      // Only evaluate rules permitted for the actor's current role
+      const stageRoles = ruleStage.split(',').map(s => s.trim());
+      if (!stageRoles.includes(actorRole.toLowerCase())) continue;
+
+      // Deduplicate multiple identical target actions
+      if (seenActions.has(ruleAction)) continue;
+
       const v = await validateWorkflowTransition({
         entity,
         targetStatus: rule.action,
-        actorRole: req.user.role,
+        actorRole,
         actorUserId: req.user.user_id,
         actorAssignedArea,
       });
+
       if (v.allowed) {
+        seenActions.add(ruleAction);
         allowed.push({
           from: rule.trigger,
           to: rule.action,
+          action: rule.action,
+          to_status: rule.action,
           role: rule.stage,
         });
       }
@@ -814,7 +850,7 @@ router.get('/:id/lineage', async (req, res, next) => {
 // POST /entities/:id/ai-analysis
 // Generate Gemini AI Decision Intelligence Report for Director/Admin review.
 // ─────────────────────────────────────────────────────────────────────────────
-router.post('/:id/ai-analysis', verifyToken, checkRole(['director', 'admin']), async (req, res, next) => {
+router.post('/:id/ai-analysis', verifyToken, checkRole(['coordinator_area', 'coordinator_general', 'director', 'admin']), async (req, res, next) => {
   try {
     const entityId = parsePositiveInt(req.params.id, 'id');
     const { report, logId } = await generateIntelligenceReport(entityId, req.user.user_id);

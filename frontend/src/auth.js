@@ -77,3 +77,22 @@ export function roleLabel(role) {
 }
 
 export const ROLES = ['citizen', 'coordinator_area', 'coordinator_general', 'director', 'admin'];
+
+export async function refreshUser() {
+  const auth = getAuth();
+  if (!auth?.token) return null;
+  try {
+    const res = await fetch('/api/auth/me', {
+      headers: { Authorization: `Bearer ${auth.token}` }
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (json.success && json.data) {
+      setAuth({ ...auth, user: json.data });
+      return json.data;
+    }
+  } catch (err) {
+    console.warn('[auth] refreshUser failed:', err);
+  }
+  return auth.user || null;
+}

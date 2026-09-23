@@ -213,8 +213,11 @@ router.get('/', async (req, res, next) => {
         parameterMaster: {
           select: {
             parameter_id: true,
+            label: true,
+            field_key: true,
             field_type: true,
             control_type: true,
+            display_order: true,
             mandatory: true,
             validation_rule: true,
           },

@@ -1,4 +1,5 @@
-/* Seed script: creates domain, 7 entity types/forms, demo users, and outputs JWTs to seed-tokens.json
+/* Seed script: creates domain, 7 entity types with rich multi-section forms,
+   demo users, workflows, and outputs JWTs to seed-tokens.json
 
 Run: node seed.js
 */
@@ -34,14 +35,17 @@ function signTokenFor(user) {
   );
 }
 
-async function seedModule({
+/**
+ * Seed a module with MULTIPLE sections, each with their own subsections and parameters.
+ * This replaces the flat single-section seedModule and correctly populates the
+ * FormMaster → Section → Subsection → Parameter hierarchy.
+ */
+async function seedModuleMultiSection({
   domain_id,
   entityTypeName,
   entityTypeDescription,
   formName,
-  sectionName,
-  subsectionName,
-  parameters,
+  sections,
 }) {
   // 1. EntityType
   let entityType = await prisma.entityType.findFirst({
@@ -78,39 +82,7 @@ async function seedModule({
     });
   }
 
-  // 3. SectionMaster
-  let section = await prisma.sectionMaster.findFirst({
-    where: { form_id: formMaster.form_id, section_name: sectionName },
-  });
-  if (section) {
-    section = await prisma.sectionMaster.update({
-      where: { section_id: section.section_id },
-      data: { display_order: 1 },
-    });
-  } else {
-    section = await prisma.sectionMaster.create({
-      data: {
-        form_id: formMaster.form_id,
-        section_name: sectionName,
-        display_order: 1,
-      },
-    });
-  }
-
-  // 4. SubsectionMaster
-  let subsection = await prisma.subsectionMaster.findFirst({
-    where: { section_id: section.section_id, subsection_name: subsectionName },
-  });
-  if (!subsection) {
-    subsection = await prisma.subsectionMaster.create({
-      data: {
-        section_id: section.section_id,
-        subsection_name: subsectionName,
-      },
-    });
-  }
-
-  // 5. ParameterCategory
+  // 3. ParameterCategory
   let category = await prisma.parameterCategory.findFirst({
     where: { category_name: 'General' },
   });
@@ -120,42 +92,68 @@ async function seedModule({
     });
   }
 
-  // 6. Parameters
-  for (let i = 0; i < parameters.length; i++) {
-    const p = parameters[i];
-    await prisma.parameterMaster.upsert({
-      where: {
-        subsection_id_field_key: {
-          subsection_id: subsection.subsection_id,
-          field_key: p.field_key,
-        },
-      },
-      update: {
-        label: p.label,
-        field_type: p.field_type,
-        control_type: p.control_type,
-        display_order: i + 1,
-        options: p.options || null,
-        mandatory: p.mandatory,
-        validation_rule: p.validation_rule || null,
-        category_id: category.category_id,
-      },
-      create: {
-        subsection_id: subsection.subsection_id,
-        category_id: category.category_id,
-        field_key: p.field_key,
-        label: p.label,
-        field_type: p.field_type,
-        control_type: p.control_type,
-        display_order: i + 1,
-        options: p.options || null,
-        mandatory: p.mandatory,
-        validation_rule: p.validation_rule || null,
+  // 4. Clean existing sections for this form (idempotent re-runs)
+  const existingSections = await prisma.sectionMaster.findMany({
+    where: { form_id: formMaster.form_id },
+    include: { subsections: { include: { parameters: true } } },
+  });
+  for (const sec of existingSections) {
+    for (const sub of sec.subsections) {
+      const paramIds = sub.parameters.map(p => p.parameter_id);
+      if (paramIds.length > 0) {
+        await prisma.fileRepository.deleteMany({ where: { parameter_id: { in: paramIds } } });
+        await prisma.parameterValue.deleteMany({ where: { parameter_id: { in: paramIds } } });
+        await prisma.parameterMaster.deleteMany({ where: { parameter_id: { in: paramIds } } });
+      }
+    }
+    await prisma.subsectionMaster.deleteMany({ where: { section_id: sec.section_id } });
+  }
+  await prisma.sectionMaster.deleteMany({ where: { form_id: formMaster.form_id } });
+
+  // 5. Create sections, subsections and parameters
+  for (let sIdx = 0; sIdx < sections.length; sIdx++) {
+    const sec = sections[sIdx];
+
+    const sectionMaster = await prisma.sectionMaster.create({
+      data: {
+        form_id: formMaster.form_id,
+        section_name: sec.name,
+        display_order: sIdx + 1,
       },
     });
+
+    const subsections = sec.subsections || [{ name: 'Main', parameters: sec.parameters || [] }];
+
+    for (const sub of subsections) {
+      const subsectionMaster = await prisma.subsectionMaster.create({
+        data: {
+          section_id: sectionMaster.section_id,
+          subsection_name: sub.name,
+        },
+      });
+
+      const params = sub.parameters || [];
+      for (let pIdx = 0; pIdx < params.length; pIdx++) {
+        const p = params[pIdx];
+        await prisma.parameterMaster.create({
+          data: {
+            subsection_id: subsectionMaster.subsection_id,
+            category_id: category.category_id,
+            field_key: p.field_key,
+            label: p.label,
+            field_type: p.field_type,
+            control_type: p.control_type,
+            display_order: pIdx + 1,
+            options: p.options || null,
+            mandatory: p.mandatory || false,
+            validation_rule: p.validation_rule || null,
+          },
+        });
+      }
+    }
   }
 
-  // 7. WorkflowMaster rules
+  // 6. WorkflowMaster rules
   const defaultTransitions = [
     { trigger: 'draft', action: 'submitted', stage: 'citizen' },
     { trigger: 'submitted', action: 'coordinator_approved', stage: 'coordinator_area' },
@@ -192,56 +190,434 @@ async function seedModule({
   return { entityType, formMaster };
 }
 
-/**
- * Remove obsolete Movement ParameterMaster rows that duplicate Entity-level
- * fields (title, area, landmark) or have blank field_key and label.
- * Scoped to the Movement EntityType form only.
- */
-async function cleanupObsoleteMovementParameters(entityType) {
-  if (!entityType) return;
+// ════════════════════════════════════════════════════════════════════════════
+//  MODULE DEFINITIONS — Rich, Multi-Section, Multi-Parameter Forms
+// ════════════════════════════════════════════════════════════════════════════
 
-  const formMaster = await prisma.formMaster.findFirst({
-    where: { entity_type_id: entityType.entity_type_id },
-    include: {
-      sections: {
-        include: {
-          subsections: {
-            include: { parameters: true },
+const MODULE_DEFINITIONS = [
+  // ── 1. Movement (Civic Initiative) ──────────────────────────────────────
+  {
+    entityTypeName: 'Movement',
+    entityTypeDescription: 'Citizen movement submission and tracking',
+    formName: 'Civic Initiative Registration Form',
+    sections: [
+      {
+        name: 'About the Initiative',
+        subsections: [
+          {
+            name: 'Main',
+            parameters: [
+              { field_key: 'initiative_description', label: 'Initiative Description', field_type: 'textarea', control_type: 'textarea', mandatory: true, validation_rule: 'required' },
+              { field_key: 'initiative_type', label: 'Initiative Category / Type', field_type: 'select', control_type: 'dropdown', mandatory: true, validation_rule: 'required', options: { choices: ['Cleanliness', 'Environmental', 'Women Safety', 'Education Awareness', 'Health & Sanitation', 'Infrastructure', 'Digital Literacy', 'Other'] } },
+            ],
           },
-        },
+        ],
       },
-    },
-  });
-  if (!formMaster) return;
+      {
+        name: 'Where is it?',
+        subsections: [
+          {
+            name: 'Main',
+            parameters: [],
+          },
+        ],
+      },
+      {
+        name: 'Initiative Details',
+        subsections: [
+          {
+            name: 'Main',
+            parameters: [
+              { field_key: 'problem_need', label: 'Problem / Need', field_type: 'textarea', control_type: 'textarea', mandatory: true, validation_rule: 'required' },
+              { field_key: 'proposed_solution', label: 'Proposed Solution / Action', field_type: 'textarea', control_type: 'textarea', mandatory: true, validation_rule: 'required' },
+              { field_key: 'key_objectives', label: 'Key Objectives', field_type: 'textarea', control_type: 'textarea', mandatory: true, validation_rule: 'required' },
+              { field_key: 'expected_outcome', label: 'Expected Outcome', field_type: 'textarea', control_type: 'textarea', mandatory: false },
+              { field_key: 'target_beneficiaries', label: 'Target Beneficiaries', field_type: 'text', control_type: 'input', mandatory: false },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'Planning',
+        subsections: [
+          {
+            name: 'Main',
+            parameters: [
+              { field_key: 'proposed_start_date', label: 'Proposed Start Date', field_type: 'date', control_type: 'datepicker', mandatory: false },
+              { field_key: 'expected_duration', label: 'Expected Duration', field_type: 'text', control_type: 'input', mandatory: false },
+              { field_key: 'estimated_budget', label: 'Estimated Budget', field_type: 'number', control_type: 'input', mandatory: false },
+              { field_key: 'citizen_urgency', label: 'Citizen-assessed Urgency', field_type: 'select', control_type: 'dropdown', mandatory: false, options: { choices: ['Low', 'Normal', 'High', 'Critical'], default: 'Normal' } },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'Volunteer Requirements',
+        subsections: [
+          {
+            name: 'Main',
+            parameters: [
+              { field_key: 'requires_volunteers', label: 'Requires Volunteers?', field_type: 'select', control_type: 'dropdown', mandatory: false, options: { choices: ['No', 'Yes'], default: 'No' } },
+              { field_key: 'volunteer_count', label: 'Expected Volunteer Count', field_type: 'number', control_type: 'input', mandatory: false, options: { depends_on: { field_key: 'requires_volunteers', value: 'Yes' } } },
+              { field_key: 'volunteer_skills', label: 'Volunteer Skills Required', field_type: 'text', control_type: 'input', mandatory: false, options: { depends_on: { field_key: 'requires_volunteers', value: 'Yes' } } },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'Supporting Material',
+        subsections: [
+          {
+            name: 'Main',
+            parameters: [
+              { field_key: 'supporting_documents', label: 'Supporting Documents', field_type: 'file', control_type: 'file', mandatory: false },
+              { field_key: 'reference_images', label: 'Photos / Reference Images', field_type: 'file', control_type: 'file', mandatory: false },
+            ],
+          },
+        ],
+      },
+    ],
+  },
 
-  const obsoleteKeys = new Set(['title', 'area', 'landmark']);
-  const obsoleteIds = [];
+  // ── 2. Grievance (Civic Problem) ────────────────────────────────────────
+  {
+    entityTypeName: 'Grievance',
+    entityTypeDescription: 'Automatically created or submitted grievance issue',
+    formName: 'Grievance Submission Form',
+    sections: [
+      {
+        name: 'Grievance Details',
+        subsections: [
+          {
+            name: 'Complaint',
+            parameters: [
+              { field_key: 'complaint_details', label: 'Complaint Details', field_type: 'textarea', control_type: 'textarea', mandatory: true, validation_rule: 'required|min:20' },
+              { field_key: 'category', label: 'Grievance Category', field_type: 'select', control_type: 'dropdown', options: { choices: ['Infrastructure', 'Sanitation', 'Safety', 'Utilities', 'Public Transport', 'Water Supply', 'Noise Pollution', 'Other'] }, mandatory: true, validation_rule: 'required' },
+              { field_key: 'severity', label: 'Severity', field_type: 'select', control_type: 'dropdown', options: { choices: ['Minor', 'Moderate', 'Severe', 'Critical'], default: 'Moderate' }, mandatory: true, validation_rule: 'required' },
+            ],
+          },
+          {
+            name: 'Reference',
+            parameters: [
+              { field_key: 'reference_number', label: 'Reference Number', field_type: 'text', control_type: 'input', mandatory: false },
+              { field_key: 'date_of_incident', label: 'Date of Incident', field_type: 'date', control_type: 'datepicker', mandatory: false },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'Contact Information',
+        subsections: [
+          {
+            name: 'Reporter',
+            parameters: [
+              { field_key: 'reporter_name', label: 'Reporter Name', field_type: 'text', control_type: 'input', mandatory: true, validation_rule: 'required' },
+              { field_key: 'reporter_phone', label: 'Reporter Phone', field_type: 'phone', control_type: 'input', mandatory: false },
+              { field_key: 'reporter_email', label: 'Reporter Email', field_type: 'email', control_type: 'input', mandatory: false },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'Evidence',
+        subsections: [
+          {
+            name: 'Attachments',
+            parameters: [
+              { field_key: 'photo_evidence', label: 'Photo Evidence', field_type: 'file', control_type: 'file', mandatory: false },
+              { field_key: 'supporting_document', label: 'Supporting Document', field_type: 'file', control_type: 'file', mandatory: false },
+            ],
+          },
+        ],
+      },
+    ],
+  },
 
-  for (const section of formMaster.sections) {
-    for (const subsection of section.subsections) {
-      for (const param of subsection.parameters) {
-        const key = String(param.field_key || '').trim().toLowerCase();
-        const label = String(param.label || '').trim();
-        const blankMeta = !key && !label;
-        if (obsoleteKeys.has(key) || blankMeta) {
-          obsoleteIds.push(param.parameter_id);
-        }
-      }
-    }
-  }
+  // ── 3. Citizen Passport ─────────────────────────────────────────────────
+  {
+    entityTypeName: 'Citizen Passport',
+    entityTypeDescription: "Tracks a citizen's profile, skills, and contribution history across movements",
+    formName: 'Citizen Passport Form',
+    sections: [
+      {
+        name: 'Profile Details',
+        subsections: [
+          {
+            name: 'Personal Information',
+            parameters: [
+              { field_key: 'full_name', label: 'Full Name', field_type: 'text', control_type: 'input', mandatory: true, validation_rule: 'required|max:100' },
+              { field_key: 'date_of_birth', label: 'Date of Birth', field_type: 'date', control_type: 'datepicker', mandatory: false },
+              { field_key: 'gender', label: 'Gender', field_type: 'select', control_type: 'dropdown', options: { choices: ['Male', 'Female', 'Non-Binary', 'Prefer Not to Say'] }, mandatory: false },
+              { field_key: 'profile_email', label: 'Email Address', field_type: 'email', control_type: 'input', mandatory: false },
+              { field_key: 'profile_phone', label: 'Phone Number', field_type: 'phone', control_type: 'input', mandatory: false },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'Skills & Expertise',
+        subsections: [
+          {
+            name: 'Capabilities',
+            parameters: [
+              { field_key: 'skills', label: 'Key Skills', field_type: 'text', control_type: 'input', mandatory: false },
+              { field_key: 'education_level', label: 'Education Level', field_type: 'select', control_type: 'dropdown', options: { choices: ['High School', 'Diploma', 'Undergraduate', 'Postgraduate', 'Doctorate', 'Other'] }, mandatory: false },
+              { field_key: 'professional_background', label: 'Professional Background', field_type: 'textarea', control_type: 'textarea', mandatory: false },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'Civic Contribution',
+        subsections: [
+          {
+            name: 'Track Record',
+            parameters: [
+              { field_key: 'contribution_history', label: 'Contribution History', field_type: 'textarea', control_type: 'textarea', mandatory: false },
+              { field_key: 'movements_joined', label: 'Movements Joined', field_type: 'number', control_type: 'input', mandatory: false },
+              { field_key: 'volunteer_hours', label: 'Total Volunteer Hours', field_type: 'number', control_type: 'input', mandatory: false },
+              { field_key: 'civic_score', label: 'Civic Score', field_type: 'number', control_type: 'input', mandatory: false },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'Documents',
+        subsections: [
+          {
+            name: 'Verification',
+            parameters: [
+              { field_key: 'id_proof', label: 'ID Proof Document', field_type: 'file', control_type: 'file', mandatory: false },
+              { field_key: 'profile_photo', label: 'Profile Photo', field_type: 'file', control_type: 'file', mandatory: false },
+            ],
+          },
+        ],
+      },
+    ],
+  },
 
-  if (obsoleteIds.length === 0) {
-    console.log('No obsolete Movement ParameterMaster rows to remove.');
-    return;
-  }
+  // ── 4. Digital Civic Constitution (Civic Charter) ────────────────────────
+  {
+    entityTypeName: 'Digital Civic Constitution',
+    entityTypeDescription: 'Establishes governance rules for a specific Movement',
+    formName: 'Digital Civic Constitution Form',
+    sections: [
+      {
+        name: 'Constitution Governance',
+        subsections: [
+          {
+            name: 'Charter Identity',
+            parameters: [
+              { field_key: 'constitution_title', label: 'Constitution Title', field_type: 'text', control_type: 'input', mandatory: true, validation_rule: 'required|max:150' },
+              { field_key: 'linked_movement_id', label: 'Linked Movement ID', field_type: 'text', control_type: 'input', mandatory: true, validation_rule: 'required' },
+              { field_key: 'effective_date', label: 'Effective Date', field_type: 'date', control_type: 'datepicker', mandatory: false },
+            ],
+          },
+          {
+            name: 'Core Principles',
+            parameters: [
+              { field_key: 'core_values', label: 'Core Values', field_type: 'textarea', control_type: 'textarea', mandatory: true, validation_rule: 'required' },
+              { field_key: 'vision_statement', label: 'Vision Statement', field_type: 'textarea', control_type: 'textarea', mandatory: false },
+              { field_key: 'mission_statement', label: 'Mission Statement', field_type: 'textarea', control_type: 'textarea', mandatory: false },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'Rights & Governance',
+        subsections: [
+          {
+            name: 'Rules & Guidelines',
+            parameters: [
+              { field_key: 'rights_responsibilities', label: 'Rights & Responsibilities', field_type: 'textarea', control_type: 'textarea', mandatory: true, validation_rule: 'required' },
+              { field_key: 'transparency_rules', label: 'Transparency Rules', field_type: 'textarea', control_type: 'textarea', mandatory: false },
+              { field_key: 'participation_guidelines', label: 'Participation Guidelines', field_type: 'textarea', control_type: 'textarea', mandatory: false },
+              { field_key: 'accountability_mechanisms', label: 'Accountability Mechanisms', field_type: 'textarea', control_type: 'textarea', mandatory: false },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'Documents',
+        subsections: [
+          {
+            name: 'Attachments',
+            parameters: [
+              { field_key: 'charter_document', label: 'Charter Document', field_type: 'file', control_type: 'file', mandatory: false },
+            ],
+          },
+        ],
+      },
+    ],
+  },
 
-  await prisma.fileRepository.deleteMany({ where: { parameter_id: { in: obsoleteIds } } });
-  await prisma.parameterValue.deleteMany({ where: { parameter_id: { in: obsoleteIds } } });
-  await prisma.parameterMaster.deleteMany({ where: { parameter_id: { in: obsoleteIds } } });
-  console.log(
-    `Removed ${obsoleteIds.length} obsolete Movement ParameterMaster row(s): ${obsoleteIds.join(', ')}`
-  );
-}
+  // ── 5. Employment Exchange ──────────────────────────────────────────────
+  {
+    entityTypeName: 'Employment Exchange',
+    entityTypeDescription: 'Job postings tied to movement-generated needs',
+    formName: 'Employment Exchange Form',
+    sections: [
+      {
+        name: 'Job Details',
+        subsections: [
+          {
+            name: 'Position Information',
+            parameters: [
+              { field_key: 'job_title', label: 'Job Title', field_type: 'text', control_type: 'input', mandatory: true, validation_rule: 'required|max:100' },
+              { field_key: 'description', label: 'Job Description', field_type: 'textarea', control_type: 'textarea', mandatory: true, validation_rule: 'required' },
+              { field_key: 'job_category', label: 'Job Category', field_type: 'select', control_type: 'dropdown', options: { choices: ['Full-Time', 'Part-Time', 'Contract', 'Volunteer', 'Internship'] }, mandatory: true, validation_rule: 'required' },
+              { field_key: 'salary_range', label: 'Salary / Stipend Range', field_type: 'text', control_type: 'input', mandatory: false },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'Requirements',
+        subsections: [
+          {
+            name: 'Qualifications',
+            parameters: [
+              { field_key: 'required_skills', label: 'Required Skills', field_type: 'textarea', control_type: 'textarea', mandatory: false },
+              { field_key: 'experience_level', label: 'Experience Level', field_type: 'select', control_type: 'dropdown', options: { choices: ['Entry Level', 'Mid Level', 'Senior Level', 'Expert'] }, mandatory: false },
+              { field_key: 'education_required', label: 'Education Required', field_type: 'text', control_type: 'input', mandatory: false },
+              { field_key: 'age_criteria', label: 'Age Criteria', field_type: 'text', control_type: 'input', mandatory: false },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'Posting Details',
+        subsections: [
+          {
+            name: 'Organization',
+            parameters: [
+              { field_key: 'posted_by', label: 'Posted By (Organization)', field_type: 'text', control_type: 'input', mandatory: true, validation_rule: 'required' },
+              { field_key: 'contact_email', label: 'Contact Email', field_type: 'email', control_type: 'input', mandatory: false },
+              { field_key: 'contact_phone', label: 'Contact Phone', field_type: 'phone', control_type: 'input', mandatory: false },
+              { field_key: 'application_deadline', label: 'Application Deadline', field_type: 'date', control_type: 'datepicker', mandatory: false },
+              { field_key: 'posting_status', label: 'Posting Status', field_type: 'select', control_type: 'dropdown', options: { choices: ['Open', 'Closed', 'On Hold'], default: 'Open' }, mandatory: false },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'Documents',
+        subsections: [
+          {
+            name: 'Attachments',
+            parameters: [
+              { field_key: 'job_description_file', label: 'Detailed Job Description (PDF)', field_type: 'file', control_type: 'file', mandatory: false },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+
+  // ── 6. Volunteer Management ─────────────────────────────────────────────
+  {
+    entityTypeName: 'Volunteer Management',
+    entityTypeDescription: 'Volunteer registry and task assignment for a movement',
+    formName: 'Volunteer Management Form',
+    sections: [
+      {
+        name: 'Volunteer Details',
+        subsections: [
+          {
+            name: 'Personal Info',
+            parameters: [
+              { field_key: 'volunteer_name', label: 'Volunteer Name', field_type: 'text', control_type: 'input', mandatory: true, validation_rule: 'required|max:100' },
+              { field_key: 'volunteer_email', label: 'Email', field_type: 'email', control_type: 'input', mandatory: false },
+              { field_key: 'volunteer_phone', label: 'Phone', field_type: 'phone', control_type: 'input', mandatory: false },
+              { field_key: 'date_of_birth', label: 'Date of Birth', field_type: 'date', control_type: 'datepicker', mandatory: false },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'Assignment',
+        subsections: [
+          {
+            name: 'Task Details',
+            parameters: [
+              { field_key: 'linked_movement_id', label: 'Linked Movement ID', field_type: 'text', control_type: 'input', mandatory: true, validation_rule: 'required' },
+              { field_key: 'role_task_assigned', label: 'Role / Task Assigned', field_type: 'text', control_type: 'input', mandatory: false },
+              { field_key: 'skills_offered', label: 'Skills Offered', field_type: 'textarea', control_type: 'textarea', mandatory: false },
+              { field_key: 'availability', label: 'Availability', field_type: 'select', control_type: 'dropdown', options: { choices: ['Weekdays', 'Weekends', 'Full-Time', 'Evenings Only', 'Flexible'] }, mandatory: false },
+              { field_key: 'hours_committed', label: 'Hours Committed Per Week', field_type: 'number', control_type: 'input', mandatory: false },
+              { field_key: 'volunteer_status', label: 'Status', field_type: 'select', control_type: 'dropdown', options: { choices: ['Registered', 'Active', 'On Leave', 'Completed'], default: 'Registered' }, mandatory: false },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'Documents',
+        subsections: [
+          {
+            name: 'Attachments',
+            parameters: [
+              { field_key: 'id_verification', label: 'ID Verification Document', field_type: 'file', control_type: 'file', mandatory: false },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+
+  // ── 7. Legacy & Continuity ──────────────────────────────────────────────
+  {
+    entityTypeName: 'Legacy & Continuity',
+    entityTypeDescription: 'Tracks what a movement becomes after it concludes',
+    formName: 'Legacy & Continuity Form',
+    sections: [
+      {
+        name: 'Legacy Overview',
+        subsections: [
+          {
+            name: 'Transition Details',
+            parameters: [
+              { field_key: 'linked_movement_id', label: 'Linked Movement ID', field_type: 'text', control_type: 'input', mandatory: true, validation_rule: 'required' },
+              { field_key: 'continuity_type', label: 'Continuity Type', field_type: 'select', control_type: 'dropdown', options: { choices: ['NGO', 'Startup', 'Research Center', 'Cooperative', 'Government Program', 'Community Center', 'Other'] }, mandatory: true, validation_rule: 'required' },
+              { field_key: 'description', label: 'Description', field_type: 'textarea', control_type: 'textarea', mandatory: true, validation_rule: 'required' },
+              { field_key: 'transition_date', label: 'Planned Transition Date', field_type: 'date', control_type: 'datepicker', mandatory: false },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'Impact & Sustainability',
+        subsections: [
+          {
+            name: 'Outcomes',
+            parameters: [
+              { field_key: 'impact_summary', label: 'Impact Summary', field_type: 'textarea', control_type: 'textarea', mandatory: false },
+              { field_key: 'people_impacted', label: 'People Impacted', field_type: 'number', control_type: 'input', mandatory: false },
+              { field_key: 'sustainability_plan', label: 'Sustainability Plan', field_type: 'textarea', control_type: 'textarea', mandatory: false },
+              { field_key: 'funding_source', label: 'Funding Source', field_type: 'text', control_type: 'input', mandatory: false },
+              { field_key: 'legacy_status', label: 'Status', field_type: 'select', control_type: 'dropdown', options: { choices: ['Proposed', 'In Progress', 'Established', 'Archived'], default: 'Proposed' }, mandatory: false },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'Documents',
+        subsections: [
+          {
+            name: 'Attachments',
+            parameters: [
+              { field_key: 'transition_plan_doc', label: 'Transition Plan Document', field_type: 'file', control_type: 'file', mandatory: false },
+              { field_key: 'impact_report', label: 'Impact Report', field_type: 'file', control_type: 'file', mandatory: false },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+];
+
+// ════════════════════════════════════════════════════════════════════════════
+//  MAIN
+// ════════════════════════════════════════════════════════════════════════════
 
 (async () => {
   try {
@@ -256,113 +632,13 @@ async function cleanupObsoleteMovementParameters(entityType) {
       });
     }
 
-    // ── 1. Seed All 7 Modules (EntityTypes, FormMasters, Sections, Subsections, Parameters) ──
-    const modulesToSeed = [
-      {
-        entityTypeName: 'Movement',
-        entityTypeDescription: 'Citizen movement submission and tracking',
-        formName: 'Movement Registration Form',
-        sectionName: 'Basic Information',
-        subsectionName: 'Identity',
-        parameters: [
-          { field_key: 'description', label: 'Description', field_type: 'textarea', control_type: 'textarea', mandatory: true, validation_rule: 'required' },
-          { field_key: 'reported_on', label: 'Reported Date', field_type: 'date', control_type: 'datepicker', mandatory: true, validation_rule: 'required|date' },
-        ],
-      },
-      {
-        entityTypeName: 'Grievance',
-        entityTypeDescription: 'Automatically created or submitted grievance issue',
-        formName: 'Grievance Submission Form',
-        sectionName: 'Grievance Details',
-        subsectionName: 'Complaint',
-        parameters: [
-          { field_key: 'complaint_details', label: 'Complaint Details', field_type: 'textarea', control_type: 'textarea', mandatory: true, validation_rule: 'required|min:20' },
-          { field_key: 'category', label: 'Grievance Category', field_type: 'select', control_type: 'dropdown', options: { choices: ['Infrastructure', 'Sanitation', 'Safety', 'Utilities', 'Other'] }, mandatory: true, validation_rule: 'required' },
-          { field_key: 'reference_number', label: 'Reference Number', field_type: 'text', control_type: 'input', mandatory: false, validation_rule: null },
-        ],
-      },
-      {
-        entityTypeName: 'Citizen Passport',
-        entityTypeDescription: "Tracks a citizen's profile, skills, and contribution history across movements",
-        formName: 'Citizen Passport Form',
-        sectionName: 'Profile Details',
-        subsectionName: 'Profile Information',
-        parameters: [
-          { field_key: 'full_name', label: 'Full Name', field_type: 'text', control_type: 'input', mandatory: true, validation_rule: 'required|max:100' },
-          { field_key: 'skills', label: 'Skills', field_type: 'text', control_type: 'input', mandatory: false, validation_rule: null },
-          { field_key: 'contribution_history', label: 'Contribution History', field_type: 'textarea', control_type: 'textarea', mandatory: false, validation_rule: null },
-          { field_key: 'movements_joined', label: 'Movements Joined', field_type: 'number', control_type: 'input', mandatory: false, validation_rule: null },
-          { field_key: 'volunteer_hours', label: 'Volunteer Hours', field_type: 'number', control_type: 'input', mandatory: false, validation_rule: null },
-        ],
-      },
-      {
-        entityTypeName: 'Digital Civic Constitution',
-        entityTypeDescription: 'Establishes governance rules for a specific Movement',
-        formName: 'Digital Civic Constitution Form',
-        sectionName: 'Constitution Governance',
-        subsectionName: 'Rules & Guidelines',
-        parameters: [
-          { field_key: 'constitution_title', label: 'Constitution Title', field_type: 'text', control_type: 'input', mandatory: true, validation_rule: 'required|max:150' },
-          { field_key: 'core_values', label: 'Core Values', field_type: 'textarea', control_type: 'textarea', mandatory: true, validation_rule: 'required' },
-          { field_key: 'rights_responsibilities', label: 'Rights & Responsibilities', field_type: 'textarea', control_type: 'textarea', mandatory: true, validation_rule: 'required' },
-          { field_key: 'transparency_rules', label: 'Transparency Rules', field_type: 'textarea', control_type: 'textarea', mandatory: false, validation_rule: null },
-          { field_key: 'participation_guidelines', label: 'Participation Guidelines', field_type: 'textarea', control_type: 'textarea', mandatory: false, validation_rule: null },
-          { field_key: 'linked_movement_id', label: 'Linked Movement ID', field_type: 'text', control_type: 'input', mandatory: true, validation_rule: 'required' },
-        ],
-      },
-      {
-        entityTypeName: 'Employment Exchange',
-        entityTypeDescription: 'Job postings tied to movement-generated needs',
-        formName: 'Employment Exchange Form',
-        sectionName: 'Job Details',
-        subsectionName: 'Posting Information',
-        parameters: [
-          { field_key: 'job_title', label: 'Job Title', field_type: 'text', control_type: 'input', mandatory: true, validation_rule: 'required|max:100' },
-          { field_key: 'description', label: 'Description', field_type: 'textarea', control_type: 'textarea', mandatory: true, validation_rule: 'required' },
-          { field_key: 'required_skills', label: 'Required Skills', field_type: 'text', control_type: 'input', mandatory: false, validation_rule: null },
-          { field_key: 'location', label: 'Location', field_type: 'text', control_type: 'input', mandatory: true, validation_rule: 'required' },
-          { field_key: 'posted_by', label: 'Posted By', field_type: 'text', control_type: 'input', mandatory: true, validation_rule: 'required' },
-          { field_key: 'status', label: 'Status', field_type: 'select', control_type: 'dropdown', options: { choices: ['Open', 'Closed'], default: 'Open' }, mandatory: false, validation_rule: null },
-        ],
-      },
-      {
-        entityTypeName: 'Volunteer Management',
-        entityTypeDescription: 'Volunteer registry and task assignment for a movement',
-        formName: 'Volunteer Management Form',
-        sectionName: 'Volunteer Details',
-        subsectionName: 'Assignment Information',
-        parameters: [
-          { field_key: 'volunteer_name', label: 'Volunteer Name', field_type: 'text', control_type: 'input', mandatory: true, validation_rule: 'required|max:100' },
-          { field_key: 'linked_movement_id', label: 'Linked Movement ID', field_type: 'text', control_type: 'input', mandatory: true, validation_rule: 'required' },
-          { field_key: 'role_task_assigned', label: 'Role/Task Assigned', field_type: 'text', control_type: 'input', mandatory: false, validation_rule: null },
-          { field_key: 'availability', label: 'Availability', field_type: 'text', control_type: 'input', mandatory: false, validation_rule: null },
-          { field_key: 'status', label: 'Status', field_type: 'select', control_type: 'dropdown', options: { choices: ['Registered', 'Active', 'Completed'], default: 'Registered' }, mandatory: false, validation_rule: null },
-        ],
-      },
-      {
-        entityTypeName: 'Legacy & Continuity',
-        entityTypeDescription: 'Tracks what a movement becomes after it concludes',
-        formName: 'Legacy & Continuity Form',
-        sectionName: 'Continuity Planning',
-        subsectionName: 'Legacy Overview',
-        parameters: [
-          { field_key: 'linked_movement_id', label: 'Linked Movement ID', field_type: 'text', control_type: 'input', mandatory: true, validation_rule: 'required' },
-          { field_key: 'continuity_type', label: 'Continuity Type', field_type: 'select', control_type: 'dropdown', options: { choices: ['NGO', 'Startup', 'Research Center', 'Other'] }, mandatory: true, validation_rule: 'required' },
-          { field_key: 'description', label: 'Description', field_type: 'textarea', control_type: 'textarea', mandatory: true, validation_rule: 'required' },
-          { field_key: 'status', label: 'Status', field_type: 'select', control_type: 'dropdown', options: { choices: ['Proposed', 'In Progress', 'Established'], default: 'Proposed' }, mandatory: false, validation_rule: null },
-        ],
-      },
-    ];
-
-    for (const mod of modulesToSeed) {
-      const seeded = await seedModule({ ...mod, domain_id: domain.domain_id });
-      console.log(`Seeded module: "${mod.entityTypeName}" -> Form ID: ${seeded.formMaster.form_id}`);
-      if (mod.entityTypeName === 'Movement') {
-        await cleanupObsoleteMovementParameters(seeded.entityType);
-      }
+    // ── 1. Seed All 7 Modules ──
+    for (const mod of MODULE_DEFINITIONS) {
+      const seeded = await seedModuleMultiSection({ ...mod, domain_id: domain.domain_id });
+      console.log(`Seeded module: "${mod.entityTypeName}" → Form ID: ${seeded.formMaster.form_id}`);
     }
 
-    // ── 2. Seed EntityRelationshipRule (Movement approved -> Auto-creates Grievance) ──
+    // ── 2. Seed EntityRelationshipRule (Movement approved → Auto-creates Grievance) ──
     const movementType = await prisma.entityType.findFirst({ where: { name: 'Movement' } });
     const grievanceType = await prisma.entityType.findFirst({ where: { name: 'Grievance' } });
     if (movementType && grievanceType) {
@@ -383,11 +659,11 @@ async function cleanupObsoleteMovementParameters(entityType) {
             auto_approve: false,
           },
         });
-        console.log('Seeded EntityRelationshipRule: Movement (approved) -> Grievance');
+        console.log('Seeded EntityRelationshipRule: Movement (approved) → Grievance');
       }
     }
 
-    // ── 3. Seed ReportMaster Definitions for Reference Modules ──
+    // ── 3. Seed ReportMaster Definitions ──
     const employmentType = await prisma.entityType.findFirst({ where: { name: 'Employment Exchange' } });
 
     const sampleReports = [
@@ -430,7 +706,7 @@ async function cleanupObsoleteMovementParameters(entityType) {
       }
     }
 
-    // ── 3. Seed Users & Tokens ──
+    // ── 4. Seed Users & Tokens ──
     const users = [
       { name: 'Demo Citizen', email: 'demo.citizen@example.com', password: 'Password123', role: 'citizen' },
       { name: 'Demo Coordinator Area', email: 'demo.coord.area@example.com', password: 'Password123', role: 'coordinator_area', assignedArea: 'Sector 5' },
@@ -454,7 +730,7 @@ async function cleanupObsoleteMovementParameters(entityType) {
     fs.writeFileSync('seed-tokens.json', JSON.stringify(created, null, 2));
     console.log('Seed complete. Tokens written to seed-tokens.json');
 
-    // ── 4. Create sample demo entity ──
+    // ── 5. Create sample demo entity ──
     const citizen = await prisma.user.findUnique({ where: { email: 'demo.citizen@example.com' } });
     if (citizen && movementType) {
       const existingEntity = await prisma.entity.findFirst({
