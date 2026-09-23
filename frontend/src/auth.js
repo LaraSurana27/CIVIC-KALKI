@@ -5,7 +5,7 @@ const STORAGE_KEY = 'ck_auth';
 
 export function getAuth() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -14,11 +14,11 @@ export function getAuth() {
 
 export function setAuth(data) {
   // data: { token, user }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
 export function clearAuth() {
-  localStorage.removeItem(STORAGE_KEY);
+  sessionStorage.removeItem(STORAGE_KEY);
 }
 
 export function getToken() {
@@ -66,11 +66,11 @@ export function requireRole(allowedRoles, navigate) {
 
 // Role display helpers
 const ROLE_LABELS = {
-  citizen:              'Citizen',
-  coordinator_area:     'Area Coordinator',
-  coordinator_general:  'General Coordinator',
-  director:             'Director',
-  admin:                'Administrator',
+  citizen: 'Citizen',
+  coordinator_area: 'Area Coordinator',
+  coordinator_general: 'General Coordinator',
+  director: 'Director',
+  admin: 'Administrator',
 };
 export function roleLabel(role) {
   return ROLE_LABELS[role] || role;
