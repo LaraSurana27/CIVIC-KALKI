@@ -254,8 +254,16 @@ async function loadEntities() {
       });
     }
 
+    // Automatically localize dynamic cases log and table headers
+    if (typeof window.civicTranslatePage === 'function') {
+      window.civicTranslatePage();
+    }
+
   } catch (err) {
     toastError('Failed to load cases');
     content.innerHTML = `<div class="alert alert-error">Error loading cases. Please try again.</div>`;
+    if (typeof window.civicTranslatePage === 'function') {
+      window.civicTranslatePage();
+    }
   }
 }

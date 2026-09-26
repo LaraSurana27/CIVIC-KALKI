@@ -328,7 +328,7 @@ model ApprovalHistory {
 
 model AIExecutionLog {
   ai_execution_log_id  Int      @id @default(autoincrement())
-  entity_id            Int
+  entity_id            Int?     // Nullable: portfolio-level governance analysis has no single entity
   requested_by_user_id Int?
   provider             String   @default("gemini")
   model                String?
@@ -336,13 +336,15 @@ model AIExecutionLog {
   response             String?
   status               String   @default("completed")
   error_message        String?
+  analysis_type        String?  // 'entity_analysis' | 'governance' — null means legacy per-entity analysis
   created_date         DateTime @default(now())
 
-  entity          Entity @relation(fields: [entity_id], references: [entity_id])
-  requestedByUser User?  @relation("AIRequestedBy", fields: [requested_by_user_id], references: [user_id], onDelete: SetNull)
+  entity          Entity? @relation(fields: [entity_id], references: [entity_id], onDelete: SetNull)
+  requestedByUser User?   @relation("AIRequestedBy", fields: [requested_by_user_id], references: [user_id], onDelete: SetNull)
 
   @@index([entity_id, created_date])
   @@index([requested_by_user_id])
+  @@index([analysis_type, created_date])
 }
 
 model FileRepository {

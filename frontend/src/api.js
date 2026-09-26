@@ -164,6 +164,13 @@ export const files = {
   download: (fileId) => `${BASE}/files/${fileId}`,
 };
 
+// ── Governance Intelligence ───────────────────────────────────────────────
+export const governance = {
+  getConfig: () => request('GET', '/governance/config'),
+  analyze: (entityTypeId) => request('POST', '/governance/analyze', entityTypeId ? { entity_type_id: entityTypeId } : {}),
+};
+
 // ── Health ────────────────────────────────────────────────────────────────
 export const health = () => request('GET', '/health');
+
 

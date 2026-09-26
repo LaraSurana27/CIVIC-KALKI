@@ -39,6 +39,8 @@ const reportRoutes = require('./routes/report');
 const moduleBuilderRoutes = require('./routes/moduleBuilder');
 const jurisdictionRoutes = require('./routes/jurisdiction');
 const fileRoutes = require('./routes/file');
+const translateRoutes = require('./routes/translate');
+const governanceRoutes = require('./routes/governance');
 
 // ── Body parsing (limit set to prevent oversized payloads) ──
 app.use(express.json({ limit: '1mb' }));
@@ -59,6 +61,8 @@ app.use('/reports', reportRoutes); // ReportMaster runtime execution
 app.use('/module-builder', moduleBuilderRoutes); // Phase 3A atomic module deployment
 app.use('/', formRoutes);          // mounts /forms, /sections, /subsections
 app.use('/files', fileRoutes);     // File upload engine
+app.use('/translate', translateRoutes); // Multilingual translation service
+app.use('/governance', governanceRoutes); // Governance Intelligence engine
 
 // ── Serve uploaded files statically ──
 const path = require('path');

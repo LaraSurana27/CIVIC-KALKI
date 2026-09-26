@@ -751,6 +751,9 @@ const MODULE_DEFINITIONS = [
       }
     }
 
+    // ── 6. Seed Donation Governance Intelligence module ──
+    await seedGovernanceModule(domain.domain_id);
+
     await prisma.$disconnect();
   } catch (err) {
     console.error(err);
@@ -758,3 +761,466 @@ const MODULE_DEFINITIONS = [
     process.exit(1);
   }
 })();
+
+// ════════════════════════════════════════════════════════════════════════════
+//  GOVERNANCE INTELLIGENCE — Donation Transaction module seed
+//  All metadata-driven: EntityType / FormMaster / WorkflowMaster / ReportMaster
+//  / DashboardMaster / 18 seed entities. No donation-specific code.
+// ════════════════════════════════════════════════════════════════════════════
+
+async function seedGovernanceModule(domainId) {
+  console.log('\n── Seeding Governance Intelligence module ──');
+
+  // ── Step 1: EntityType ──────────────────────────────────────────────────
+  let donationType = await prisma.entityType.findFirst({
+    where: { name: 'Donation Transaction' },
+  });
+  if (!donationType) {
+    donationType = await prisma.entityType.create({
+      data: {
+        domain_id: domainId,
+        name: 'Donation Transaction',
+        description:
+          'Illustrative governance simulation — contribution transaction tracking. ' +
+          'All data is synthetic and does not represent any real individual or institution.',
+      },
+    });
+    console.log(`  Created EntityType: ${donationType.name} (id=${donationType.entity_type_id})`);
+  }
+
+  const etId = donationType.entity_type_id;
+
+  // ── Step 2: FormMaster + Sections + Subsections + Parameters ───────────
+  let form = await prisma.formMaster.findFirst({ where: { entity_type_id: etId } });
+  if (!form) {
+    form = await prisma.formMaster.create({
+      data: { entity_type_id: etId, form_name: 'Donation Transaction Form', version: '1.0', status: 'active' },
+    });
+  }
+
+  // Look up the default ParameterCategory (id=1, created by earlier seed modules)
+  let cat = await prisma.parameterCategory.findFirst();
+  if (!cat) {
+    cat = await prisma.parameterCategory.create({ data: { category_name: 'General' } });
+  }
+  const catId = cat.category_id;
+
+  // Helper: upsert section → subsection → parameters
+  const SECTIONS = [
+    {
+      name: 'Transaction Record',
+      order: 1,
+      subsection: 'Transaction Details',
+      params: [
+        { key: 'donor_reference',   label: 'Donor Reference Code',  type: 'text',   ctrl: 'input',     order: 1, mandatory: true  },
+        { key: 'amount',            label: 'Transaction Amount',     type: 'number', ctrl: 'input',     order: 2, mandatory: true  },
+        { key: 'transaction_date',  label: 'Date of Transaction',    type: 'date',   ctrl: 'datepicker',order: 3, mandatory: true  },
+        {
+          key: 'payment_method',    label: 'Payment Method',         type: 'select', ctrl: 'dropdown',  order: 4,
+          options: { choices: ['Cash', 'Cheque', 'NEFT', 'RTGS', 'DD', 'UPI'] },
+        },
+      ],
+    },
+    {
+      name: 'Verification & Reconciliation',
+      order: 2,
+      subsection: 'Verification Details',
+      params: [
+        { key: 'receipt_reference',      label: 'Official Receipt Reference', type: 'text',   ctrl: 'input',    order: 1 },
+        {
+          key: 'verification_status',    label: 'Verification Status',        type: 'select', ctrl: 'dropdown', order: 2,
+          // "Pending" = default / not yet verified; "Verified" = human-confirmed; "Failed" = process failure; "Disputed" = contested
+          options: { choices: ['Pending', 'Verified', 'Failed', 'Disputed'], default: 'Pending' },
+        },
+        { key: 'bank_reference',         label: 'Bank Reference / UTR',       type: 'text',   ctrl: 'input',    order: 3 },
+        {
+          key: 'reconciliation_status',  label: 'Reconciliation Status',      type: 'select', ctrl: 'dropdown', order: 4,
+          // ALL values used by state-sync rules are present here:
+          // "Unresolved" → expected at recorded/verified stages
+          // "Reconciled" → expected at reconciled/audited/closed stages
+          // "Closed"     → valid final sub-state at closed stage
+          // "Exception"  → anomaly sub-state (does not match any workflow stage)
+          options: { choices: ['Unresolved', 'Reconciled', 'Exception', 'Closed'], default: 'Unresolved' },
+        },
+      ],
+    },
+  ];
+
+  const paramIds = {}; // field_key → parameter_id
+  for (const sec of SECTIONS) {
+    let section = await prisma.sectionMaster.findFirst({ where: { form_id: form.form_id, section_name: sec.name } });
+    if (!section) {
+      section = await prisma.sectionMaster.create({
+        data: { form_id: form.form_id, section_name: sec.name, display_order: sec.order },
+      });
+    }
+    let subsec = await prisma.subsectionMaster.findFirst({ where: { section_id: section.section_id, subsection_name: sec.subsection } });
+    if (!subsec) {
+      subsec = await prisma.subsectionMaster.create({
+        data: { section_id: section.section_id, subsection_name: sec.subsection },
+      });
+    }
+    for (const p of sec.params) {
+      let param = await prisma.parameterMaster.findFirst({ where: { subsection_id: subsec.subsection_id, field_key: p.key } });
+      if (!param) {
+        param = await prisma.parameterMaster.create({
+          data: {
+            subsection_id: subsec.subsection_id,
+            category_id: catId,
+            field_key: p.key,
+            label: p.label,
+            field_type: p.type,
+            control_type: p.ctrl,
+            display_order: p.order || 0,
+            options: p.options || null,
+            mandatory: p.mandatory || false,
+          },
+        });
+      }
+      paramIds[p.key] = param.parameter_id;
+    }
+  }
+  console.log('  Form + parameters seeded.');
+
+  // ── Step 3: WorkflowMaster (8 transitions, custom stages) ──────────────
+  // Entity.status is authoritative. Stages: recorded → verified → reconciled → audited → closed
+  const workflows = [
+    { trigger: 'recorded',    action: 'verified',    stage: 'coordinator_area'    },
+    { trigger: 'recorded',    action: 'verified',    stage: 'coordinator_general' },
+    { trigger: 'verified',    action: 'reconciled',  stage: 'director'            },
+    { trigger: 'verified',    action: 'reconciled',  stage: 'admin'               },
+    { trigger: 'reconciled',  action: 'audited',     stage: 'director'            },
+    { trigger: 'reconciled',  action: 'audited',     stage: 'admin'               },
+    { trigger: 'audited',     action: 'closed',      stage: 'director'            },
+    { trigger: 'audited',     action: 'closed',      stage: 'admin'               },
+  ];
+  for (const wf of workflows) {
+    const existing = await prisma.workflowMaster.findFirst({
+      where: { entity_type_id: etId, trigger: wf.trigger, action: wf.action, stage: wf.stage },
+    });
+    if (!existing) {
+      await prisma.workflowMaster.create({ data: { entity_type_id: etId, ...wf } });
+    }
+  }
+  console.log('  WorkflowMaster (8 transitions) seeded.');
+
+  // ── Step 4: ReportMaster — 3 display reports + 1 governance config ──────
+  const reports = [
+    {
+      name: 'Transactions by Verification Status',
+      output_format: 'grouped_count',
+      filters: JSON.stringify({ groupBy: 'verification_status', metric: 'COUNT', fieldKey: 'verification_status', public_stats: false }),
+    },
+    {
+      name: 'Unreconciled Transactions',
+      output_format: 'table',
+      filters: JSON.stringify({ where: { reconciliation_status: 'Unresolved' }, fieldKey: 'reconciliation_status', public_stats: false }),
+    },
+    {
+      name: 'Audit Exceptions Summary',
+      output_format: 'grouped_count',
+      filters: JSON.stringify({ groupBy: 'status', metric: 'COUNT', public_stats: false }),
+    },
+    {
+      // Governance exception rule config — read by governanceIntelligence.js at runtime
+      name: 'Governance Exception Config',
+      output_format: 'config',
+      filters: JSON.stringify({
+        exception_rules: [
+          {
+            rule_id: 'VERIFICATION_STALE_7_DAYS',
+            label: 'Stale Verification',
+            field_key: 'verification_status',
+            expected_value: 'Pending',
+            threshold_days: 7,
+            severity: 'High',
+            requires_human_review: true,
+          },
+          {
+            rule_id: 'RECONCILIATION_UNRESOLVED',
+            label: 'Unresolved Reconciliation',
+            field_key: 'reconciliation_status',
+            expected_value: 'Unresolved',
+            not_in_stages: ['recorded', 'verified'],
+            threshold_days: null,
+            severity: 'Medium',
+            requires_human_review: true,
+          },
+          {
+            rule_id: 'WORKFLOW_STALE_NO_ACTIVITY',
+            label: 'No Workflow Activity',
+            field_key: null,
+            expected_value: null,
+            threshold_days: null,
+            severity: 'Medium',
+            requires_human_review: true,
+          },
+          {
+            rule_id: 'VERIFICATION_FAILED',
+            label: 'Verification Failure',
+            field_key: 'verification_status',
+            expected_value: 'Failed',
+            threshold_days: null,
+            severity: 'High',
+            requires_human_review: true,
+          },
+          {
+            rule_id: 'STATE_PARAMETER_MISMATCH',
+            label: 'State–Parameter Mismatch',
+            field_key: null,
+            expected_value: null,
+            threshold_days: null,
+            severity: 'High',
+            requires_human_review: true,
+          },
+          {
+            rule_id: 'HUMAN_TRANSITION_NO_ACTOR',
+            label: 'Anonymous Human Transition',
+            field_key: null,
+            expected_value: null,
+            threshold_days: null,
+            severity: 'Medium',
+            requires_human_review: true,
+          },
+        ],
+        // State sync rules: Entity.status is authoritative, these define expected ParameterValues per stage
+        state_sync_rules: {
+          recorded:    { verification_status: ['Pending', 'Failed', 'Disputed'] },
+          verified:    { verification_status: ['Verified'], reconciliation_status: ['Unresolved', 'Reconciled'] },
+          reconciled:  { verification_status: ['Verified'], reconciliation_status: ['Reconciled'] },
+          audited:     { verification_status: ['Verified'], reconciliation_status: ['Reconciled'] },
+          closed:      { verification_status: ['Verified'], reconciliation_status: ['Reconciled', 'Closed'] },
+        },
+        workflow_stages: ['recorded', 'verified', 'reconciled', 'audited', 'closed'],
+        // System actions that legitimately have actor_user_id=null
+        system_action_patterns: ['auto_created', 'system_init', 'seed_created', 'seed'],
+      }),
+    },
+  ];
+  for (const r of reports) {
+    const existing = await prisma.reportMaster.findFirst({ where: { entity_type_id: etId, report_name: r.name } });
+    if (!existing) {
+      await prisma.reportMaster.create({ data: { entity_type_id: etId, report_name: r.name, output_format: r.output_format, filters: r.filters } });
+    }
+  }
+  console.log('  ReportMaster (4: 3 display + 1 config) seeded.');
+
+  // ── Step 5: DashboardMaster — stakeholder config ────────────────────────
+  const existingStakeholderCfg = await prisma.dashboardMaster.findFirst({
+    where: { entity_type_id: etId, widget_name: 'governance_stakeholder_config' },
+  });
+  if (!existingStakeholderCfg) {
+    await prisma.dashboardMaster.create({
+      data: {
+        entity_type_id: etId,
+        widget_name: 'governance_stakeholder_config',
+        metric: 'config',
+        display_type: 'config',
+        filter: JSON.stringify({
+          stakeholders: [
+            {
+              stakeholder: 'Receiving Institution [Simulation]',
+              interest: 'Accurate recording and acknowledgment of received contributions',
+              concern: 'Verification failures and reconciliation gaps create accountability exposure',
+              relevant_process: 'Verification stage (recorded → verified)',
+            },
+            {
+              stakeholder: 'Oversight Authority [Simulation]',
+              interest: 'Audit trail completeness and process integrity',
+              concern: 'Transactions remaining in recorded status beyond expected timeframe signal process weakness',
+              relevant_process: 'Full pipeline audit (recorded → closed)',
+            },
+            {
+              stakeholder: 'Fund Manager [Simulation]',
+              interest: 'Bank reconciliation accuracy and exception resolution',
+              concern: 'Unresolved reconciliation in post-verification stages indicates control gap',
+              relevant_process: 'Reconciliation stage (verified → reconciled)',
+            },
+          ],
+        }),
+      },
+    });
+  }
+  console.log('  DashboardMaster stakeholder config seeded.');
+
+  // ── Step 6: Seed 18 simulation entities ─────────────────────────────────
+  // Check idempotency: skip if entities already exist
+  const existingCount = await prisma.entity.count({ where: { entity_type_id: etId } });
+  if (existingCount >= 18) {
+    console.log(`  Entities already seeded (${existingCount} found). Skipping entity seed.`);
+    return;
+  }
+
+  const now = new Date();
+  const daysAgo = (n) => new Date(now.getTime() - n * 24 * 60 * 60 * 1000);
+
+  // Seed data plan — designed to exercise all 6 exception rules
+  // Entity.status = authoritative workflow state
+  // verification_status, reconciliation_status = synchronized ParameterValues
+  const SEED_ENTITIES = [
+    // ── Status: recorded ── (4 entities)
+    {
+      name: 'DON-SIM-001 [Simulation]', status: 'recorded', area: 'Zone A',
+      params: { donor_reference: 'REF-001-SIM', amount: '50000', transaction_date: '2024-01-10', payment_method: 'NEFT', receipt_reference: 'REC-001', verification_status: 'Pending', bank_reference: '', reconciliation_status: 'Unresolved' },
+      // VERIFICATION_STALE_7_DAYS: Pending for 15 days
+      auditDateOffset: 15, action: 'seed_created',
+    },
+    {
+      name: 'DON-SIM-002 [Simulation]', status: 'recorded', area: 'Zone B',
+      params: { donor_reference: 'REF-002-SIM', amount: '75000', transaction_date: '2024-01-12', payment_method: 'Cheque', receipt_reference: 'REC-002', verification_status: 'Pending', bank_reference: '', reconciliation_status: 'Unresolved' },
+      // VERIFICATION_STALE_7_DAYS: Pending for 12 days
+      auditDateOffset: 12, action: 'seed_created',
+    },
+    {
+      name: 'DON-SIM-003 [Simulation]', status: 'recorded', area: 'Zone A',
+      params: { donor_reference: 'REF-003-SIM', amount: '30000', transaction_date: '2024-01-14', payment_method: 'Cash', receipt_reference: 'REC-003', verification_status: 'Failed', bank_reference: '', reconciliation_status: 'Unresolved' },
+      // VERIFICATION_FAILED: verification_status = Failed
+      auditDateOffset: 5, action: 'seed_created',
+    },
+    {
+      name: 'DON-SIM-004 [Simulation]', status: 'recorded', area: 'Zone C',
+      params: { donor_reference: 'REF-004-SIM', amount: '20000', transaction_date: '2024-01-20', payment_method: 'UPI', receipt_reference: '', verification_status: 'Pending', bank_reference: '', reconciliation_status: 'Unresolved' },
+      // WORKFLOW_STALE_NO_ACTIVITY: no status_transition audit entries (only seed_created)
+      auditDateOffset: 2, action: 'seed_created', noTransitions: true,
+    },
+
+    // ── Status: verified ── (4 entities, normal at this stage)
+    {
+      name: 'DON-SIM-005 [Simulation]', status: 'verified', area: 'Zone B',
+      params: { donor_reference: 'REF-005-SIM', amount: '100000', transaction_date: '2024-01-05', payment_method: 'RTGS', receipt_reference: 'REC-005', verification_status: 'Verified', bank_reference: 'UTR-005-SIM', reconciliation_status: 'Unresolved' },
+      auditDateOffset: 20, action: 'status_transition', hasTransition: true,
+    },
+    {
+      name: 'DON-SIM-006 [Simulation]', status: 'verified', area: 'Zone A',
+      params: { donor_reference: 'REF-006-SIM', amount: '45000', transaction_date: '2024-01-06', payment_method: 'NEFT', receipt_reference: 'REC-006', verification_status: 'Verified', bank_reference: 'UTR-006-SIM', reconciliation_status: 'Unresolved' },
+      auditDateOffset: 18, action: 'status_transition', hasTransition: true,
+    },
+    {
+      name: 'DON-SIM-007 [Simulation]', status: 'verified', area: 'Zone C',
+      params: { donor_reference: 'REF-007-SIM', amount: '60000', transaction_date: '2024-01-08', payment_method: 'DD', receipt_reference: 'REC-007', verification_status: 'Verified', bank_reference: 'UTR-007-SIM', reconciliation_status: 'Reconciled' },
+      auditDateOffset: 16, action: 'status_transition', hasTransition: true,
+    },
+    {
+      name: 'DON-SIM-008 [Simulation]', status: 'verified', area: 'Zone B',
+      params: { donor_reference: 'REF-008-SIM', amount: '35000', transaction_date: '2024-01-09', payment_method: 'Cheque', receipt_reference: 'REC-008', verification_status: 'Verified', bank_reference: 'UTR-008-SIM', reconciliation_status: 'Unresolved' },
+      auditDateOffset: 14, action: 'status_transition', hasTransition: true,
+    },
+
+    // ── Status: reconciled ── (4 entities)
+    {
+      name: 'DON-SIM-009 [Simulation]', status: 'reconciled', area: 'Zone A',
+      params: { donor_reference: 'REF-009-SIM', amount: '90000', transaction_date: '2024-01-03', payment_method: 'RTGS', receipt_reference: 'REC-009', verification_status: 'Verified', bank_reference: 'UTR-009-SIM', reconciliation_status: 'Reconciled' },
+      auditDateOffset: 25, action: 'status_transition', hasTransition: true,
+    },
+    {
+      name: 'DON-SIM-010 [Simulation]', status: 'reconciled', area: 'Zone B',
+      params: { donor_reference: 'REF-010-SIM', amount: '55000', transaction_date: '2024-01-04', payment_method: 'NEFT', receipt_reference: 'REC-010', verification_status: 'Verified', bank_reference: 'UTR-010-SIM', reconciliation_status: 'Unresolved' },
+      // STATE_PARAMETER_MISMATCH: status=reconciled but reconciliation_status=Unresolved
+      auditDateOffset: 22, action: 'status_transition', hasTransition: true,
+    },
+    {
+      name: 'DON-SIM-011 [Simulation]', status: 'reconciled', area: 'Zone C',
+      params: { donor_reference: 'REF-011-SIM', amount: '40000', transaction_date: '2024-01-04', payment_method: 'UPI', receipt_reference: 'REC-011', verification_status: 'Verified', bank_reference: 'UTR-011-SIM', reconciliation_status: 'Reconciled' },
+      auditDateOffset: 20, action: 'status_transition', hasTransition: true,
+    },
+    {
+      name: 'DON-SIM-012 [Simulation]', status: 'reconciled', area: 'Zone A',
+      params: { donor_reference: 'REF-012-SIM', amount: '80000', transaction_date: '2024-01-02', payment_method: 'DD', receipt_reference: 'REC-012', verification_status: 'Verified', bank_reference: 'UTR-012-SIM', reconciliation_status: 'Reconciled' },
+      auditDateOffset: 28, action: 'status_transition', hasTransition: true,
+    },
+
+    // ── Status: audited ── (3 entities, all normal)
+    {
+      name: 'DON-SIM-013 [Simulation]', status: 'audited', area: 'Zone B',
+      params: { donor_reference: 'REF-013-SIM', amount: '120000', transaction_date: '2023-12-28', payment_method: 'RTGS', receipt_reference: 'REC-013', verification_status: 'Verified', bank_reference: 'UTR-013-SIM', reconciliation_status: 'Reconciled' },
+      auditDateOffset: 32, action: 'status_transition', hasTransition: true,
+    },
+    {
+      name: 'DON-SIM-014 [Simulation]', status: 'audited', area: 'Zone A',
+      params: { donor_reference: 'REF-014-SIM', amount: '65000', transaction_date: '2023-12-30', payment_method: 'NEFT', receipt_reference: 'REC-014', verification_status: 'Verified', bank_reference: 'UTR-014-SIM', reconciliation_status: 'Reconciled' },
+      auditDateOffset: 30, action: 'status_transition', hasTransition: true,
+    },
+    {
+      name: 'DON-SIM-015 [Simulation]', status: 'audited', area: 'Zone C',
+      params: { donor_reference: 'REF-015-SIM', amount: '95000', transaction_date: '2023-12-29', payment_method: 'Cheque', receipt_reference: 'REC-015', verification_status: 'Verified', bank_reference: 'UTR-015-SIM', reconciliation_status: 'Reconciled' },
+      auditDateOffset: 31, action: 'status_transition', hasTransition: true,
+    },
+
+    // ── Status: closed ── (3 entities)
+    {
+      name: 'DON-SIM-016 [Simulation]', status: 'closed', area: 'Zone A',
+      params: { donor_reference: 'REF-016-SIM', amount: '200000', transaction_date: '2023-12-01', payment_method: 'RTGS', receipt_reference: 'REC-016', verification_status: 'Verified', bank_reference: 'UTR-016-SIM', reconciliation_status: 'Closed' },
+      auditDateOffset: 55, action: 'status_transition', hasTransition: true,
+    },
+    {
+      name: 'DON-SIM-017 [Simulation]', status: 'closed', area: 'Zone B',
+      params: { donor_reference: 'REF-017-SIM', amount: '150000', transaction_date: '2023-12-05', payment_method: 'NEFT', receipt_reference: 'REC-017', verification_status: 'Verified', bank_reference: 'UTR-017-SIM', reconciliation_status: 'Reconciled' },
+      auditDateOffset: 50, action: 'status_transition', hasTransition: true,
+    },
+    {
+      name: 'DON-SIM-018 [Simulation]', status: 'closed', area: 'Zone C',
+      params: { donor_reference: 'REF-018-SIM', amount: '175000', transaction_date: '2023-12-10', payment_method: 'DD', receipt_reference: 'REC-018', verification_status: 'Verified', bank_reference: 'UTR-018-SIM', reconciliation_status: 'Closed' },
+      auditDateOffset: 45, action: 'status_transition', hasTransition: true,
+    },
+  ];
+
+  for (const seed of SEED_ENTITIES) {
+    const existing = await prisma.entity.findFirst({ where: { entity_type_id: etId, name: seed.name } });
+    if (existing) continue;
+
+    const entity = await prisma.entity.create({
+      data: { entity_type_id: etId, name: seed.name, status: seed.status, area: seed.area || null },
+    });
+
+    // Seed ParameterValues
+    for (const [fk, val] of Object.entries(seed.params)) {
+      const pid = paramIds[fk];
+      if (!pid || val === null || val === undefined) continue;
+      await prisma.parameterValue.upsert({
+        where: { entity_id_parameter_id: { entity_id: entity.entity_id, parameter_id: pid } },
+        update: { value: String(val) },
+        create: { entity_id: entity.entity_id, parameter_id: pid, value: String(val) },
+      });
+    }
+
+    // Seed initial AuditLog (backdated to simulate age)
+    const entryDate = daysAgo(seed.auditDateOffset || 0);
+    await prisma.auditLog.create({
+      data: {
+        entity_id: entity.entity_id,
+        actor_user_id: null,
+        action: 'seed_created',
+        user: 'system/seed',
+        new_status: 'recorded',
+        datetime: entryDate,
+        reason: `Governance simulation seed: ${seed.name}`,
+      },
+    });
+
+    // For entities that have had transitions, add status_transition log entries
+    if (seed.hasTransition && seed.status !== 'recorded') {
+      const stages = ['recorded', 'verified', 'reconciled', 'audited', 'closed'];
+      const targetIdx = stages.indexOf(seed.status);
+      for (let i = 0; i < targetIdx; i++) {
+        const transDate = daysAgo(seed.auditDateOffset - (i + 1) * 4);
+        await prisma.auditLog.create({
+          data: {
+            entity_id: entity.entity_id,
+            actor_user_id: null,
+            action: 'status_transition',
+            user: 'system/seed',
+            old_status: stages[i],
+            new_status: stages[i + 1],
+            datetime: transDate,
+            reason: `Governance simulation: transition to ${stages[i + 1]}`,
+          },
+        });
+      }
+    }
+  }
+
+  console.log(`  Seeded 18 Donation Transaction entities (simulation).`);
+  console.log('  Exceptions built-in: STALE×2, FAILED×1, NO_ACTIVITY×1, MISMATCH×1 = 5 deterministic exceptions');
+  console.log('── Governance Intelligence module seeding complete.\n');
+}
+

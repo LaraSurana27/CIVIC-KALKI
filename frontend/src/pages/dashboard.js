@@ -89,9 +89,16 @@ export async function renderDashboard() {
       `;
       await renderAdminDash(newContent, user, metaData);
     }
+
+    if (typeof window.civicTranslatePage === 'function') {
+      window.civicTranslatePage();
+    }
   } catch (err) {
     toastError('Failed to load workspace data');
     document.getElementById('dash-content').innerHTML = `<div class="alert alert-error">Failed to load workspace data. Please try again.</div>`;
+    if (typeof window.civicTranslatePage === 'function') {
+      window.civicTranslatePage();
+    }
   }
 }
 

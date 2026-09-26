@@ -2,6 +2,7 @@ import { auth } from '../api.js';
 import { setAuth, isAuthenticated } from '../auth.js';
 import { navigate } from '../router.js';
 import { toastError } from '../components/toast.js';
+import { renderLanguageSelector, attachLanguageSelectorEvents } from '../components/languageSelector.js';
 
 export function renderSignup() {
   if (isAuthenticated()) {
@@ -13,6 +14,14 @@ export function renderSignup() {
   app.innerHTML = `
     <div class="auth-layout">
       <div class="auth-card">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--space-4);">
+          <a href="/" style="font-size:0.8125rem; color:var(--text-muted); display:inline-flex; align-items:center; gap:4px; text-decoration:none;">
+            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+            Home
+          </a>
+          ${renderLanguageSelector({ idPrefix: 'signup' })}
+        </div>
+
         <div class="auth-card-brand">
           <img src="/logo.png" alt="CivicKalki" style="height:44px; width:auto; object-fit:contain;" />
         </div>
@@ -74,4 +83,6 @@ export function renderSignup() {
       btn.innerHTML = 'Create Account';
     }
   });
+
+  attachLanguageSelectorEvents('signup');
 }

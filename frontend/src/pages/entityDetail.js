@@ -372,6 +372,11 @@ function renderContent(container, entity, values, audit, lineage, workflowMeta, 
 
   // Attach Dynamic Action Button Listeners
   attachActionListeners(entity.entity_id);
+
+  // Trigger full localization for dynamic entity fields and tabs
+  if (typeof window.civicTranslatePage === 'function') {
+    window.civicTranslatePage();
+  }
 }
 
 function renderDynamicActions(entity, allowedTransitions, user) {

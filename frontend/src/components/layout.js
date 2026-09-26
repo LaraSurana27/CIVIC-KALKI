@@ -1,6 +1,7 @@
 import { getUser, getRole, roleLabel, clearAuth, refreshUser } from '../auth.js';
 import { navigate } from '../router.js';
 import { getCapabilityPresentation, capabilityIcon } from '../utils/terminology.js';
+import { renderLanguageSelector, attachLanguageSelectorEvents } from './languageSelector.js';
 
 export function renderLayout(contentHTML, pageTitle = '', metaTypes = []) {
   const user = getUser();
@@ -34,6 +35,7 @@ export function renderLayout(contentHTML, pageTitle = '', metaTypes = []) {
   } else if (role === 'director') {
     primaryNav = [
       { path: '/dashboard', label: 'Governance Workspace', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
+      { path: '/governance', label: 'Governance Intelligence', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z' },
       { path: '/entities', label: 'All Operations', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01' },
       { path: '/module-builder', label: 'Capability Builder', icon: 'M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4' },
       { path: '/reports', label: 'Civic Reports', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
@@ -43,6 +45,7 @@ export function renderLayout(contentHTML, pageTitle = '', metaTypes = []) {
     // Admin
     primaryNav = [
       { path: '/dashboard', label: 'Civic OS Workspace', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
+      { path: '/governance', label: 'Governance Intelligence', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z' },
       { path: '/modules', label: 'Modules & Capabilities', icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10' },
       { path: '/module-builder', label: 'No-Code Builder', icon: 'M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4' },
       { path: '/entities', label: 'All Cases & Records', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01' },
@@ -136,6 +139,9 @@ export function renderLayout(contentHTML, pageTitle = '', metaTypes = []) {
           </div>
 
           <div class="topbar-actions">
+            <!-- Language Selector -->
+            ${renderLanguageSelector({ idPrefix: 'topbar' })}
+
             <!-- User Dropdown Menu -->
             <div class="user-dropdown-container">
               <button class="user-trigger-btn" id="topbar-user-btn" type="button" aria-haspopup="true" aria-expanded="false">
@@ -180,6 +186,9 @@ export function renderLayout(contentHTML, pageTitle = '', metaTypes = []) {
 export function attachLayoutEvents() {
   // Sync latest user profile (role, assignedArea) asynchronously
   refreshUser().catch(() => {});
+
+  // Attach language selector listeners
+  attachLanguageSelectorEvents('topbar');
 
   const topbarUserBtn = document.getElementById('topbar-user-btn');
   const userDropdownMenu = document.getElementById('user-dropdown-menu');

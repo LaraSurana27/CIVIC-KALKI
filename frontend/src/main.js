@@ -1,5 +1,6 @@
 import './style.css';
 import { initRouter, addRoute, onNotFound } from './router.js';
+import { initLanguageSupport } from './components/languageSelector.js';
 
 // Import Pages
 import { renderHome } from './pages/home.js';
@@ -14,12 +15,14 @@ import { renderProfile } from './pages/profile.js';
 import { renderModuleBuilder } from './pages/moduleBuilder.js';
 import { renderReports } from './pages/reports.js';
 import { renderModules } from './pages/modules.js';
+import { renderGovernanceIntelligence } from './pages/governanceIntelligence.js';
 
 // Setup Routes
 addRoute('/', renderHome);
 addRoute('/login', renderLogin);
 addRoute('/signup', renderSignup);
 addRoute('/dashboard', renderDashboard);
+addRoute('/governance', renderGovernanceIntelligence);
 addRoute('/modules', renderModules);
 addRoute('/entities', renderEntities);
 addRoute('/entities/new', renderEntityNew);
@@ -45,6 +48,9 @@ onNotFound(() => {
 
 // Initialize SPA Router
 initRouter();
+
+// Initialize Multi-Language Translation Engine
+initLanguageSupport();
 
 // Listen for global auth expiration (e.g. 401 from API)
 window.addEventListener('auth:expired', () => {

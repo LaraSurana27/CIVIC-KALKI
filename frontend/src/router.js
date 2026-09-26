@@ -55,10 +55,20 @@ function render(pathOrUrl = window.location.href) {
 
   const matched = matchRoute(pathname);
   if (matched) {
-    matched.handler(matched.params, url.searchParams);
+    const res = matched.handler(matched.params, url.searchParams);
+    if (res && typeof res.then === 'function') {
+      res.then(() => {
+        window.dispatchEvent(new CustomEvent('civic:route-rendered', { detail: { pathname, async: true } }));
+      }).catch(err => {
+        console.error('[Router Error]:', err);
+      });
+    }
   } else {
     notFoundHandler();
   }
+
+  // Notify listeners that route content has initiated/mounted
+  window.dispatchEvent(new CustomEvent('civic:route-rendered', { detail: { pathname } }));
 }
 
 export function initRouter() {
@@ -68,14 +78,17 @@ export function initRouter() {
   window.addEventListener('popstate', () => render(window.location.href));
 
   // Intercept all <a href> clicks inside #app (event delegation)
-  document.getElementById('app').addEventListener('click', (e) => {
-    const link = e.target.closest('a[href]');
-    if (!link) return;
-    const href = link.getAttribute('href');
-    if (!href || href.startsWith('http') || href.startsWith('mailto:') || href.startsWith('#')) return;
-    e.preventDefault();
-    navigate(href);
-  });
+  const appEl = document.getElementById('app');
+  if (appEl) {
+    appEl.addEventListener('click', (e) => {
+      const link = e.target.closest('a[href]');
+      if (!link) return;
+      const href = link.getAttribute('href');
+      if (!href || href.startsWith('http') || href.startsWith('mailto:') || href.startsWith('#')) return;
+      e.preventDefault();
+      navigate(href);
+    });
+  }
 
   // Initial render with current location
   render(window.location.href);

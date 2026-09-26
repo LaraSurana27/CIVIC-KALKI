@@ -1,4 +1,5 @@
 import { isAuthenticated, getUser } from '../auth.js';
+import { renderLanguageSelector, attachLanguageSelectorEvents } from '../components/languageSelector.js';
 
 export function renderHome() {
   const user = getUser();
@@ -16,6 +17,7 @@ export function renderHome() {
         </a>
 
         <div style="display:flex; align-items:center; gap:var(--space-4);">
+          ${renderLanguageSelector({ idPrefix: 'home' })}
           ${loggedIn ? `
             <a href="/dashboard" class="home-btn-primary" style="padding:8px 20px; font-size:0.875rem;">
               Enter Civic OS (${escapeHtml(user.name.split(' ')[0])}) →
@@ -188,6 +190,8 @@ export function renderHome() {
       </footer>
     </div>
   `;
+
+  attachLanguageSelectorEvents('home');
 }
 
 function escapeHtml(str) {
