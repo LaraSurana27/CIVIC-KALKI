@@ -41,6 +41,8 @@ const jurisdictionRoutes = require('./routes/jurisdiction');
 const fileRoutes = require('./routes/file');
 const translateRoutes = require('./routes/translate');
 const governanceRoutes = require('./routes/governance');
+const agentRoutes = require('./routes/agent');          // Conversational Agent (V1)
+const memeRoutes  = require('./routes/meme');           // Civic Meme Studio
 
 // ── Body parsing (limit set to prevent oversized payloads) ──
 app.use(express.json({ limit: '1mb' }));
@@ -63,6 +65,8 @@ app.use('/', formRoutes);          // mounts /forms, /sections, /subsections
 app.use('/files', fileRoutes);     // File upload engine
 app.use('/translate', translateRoutes); // Multilingual translation service
 app.use('/governance', governanceRoutes); // Governance Intelligence engine
+app.use('/agent', agentRoutes);          // Conversational Agent Layer (V1)
+app.use('/meme', memeRoutes);            // Civic Meme Studio
 
 // ── Serve uploaded files statically ──
 const path = require('path');

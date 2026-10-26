@@ -375,8 +375,37 @@ model User {
   created_date  DateTime @default(now())
   updated_date  DateTime @updatedAt
 
-  ownedEntities   Entity[]          @relation("EntityOwner")
-  auditLogs       AuditLog[]        @relation("AuditActor")
-  approvalHistory ApprovalHistory[] @relation("ApprovalActor")
-  aiExecutionLogs AIExecutionLog[]  @relation("AIRequestedBy")
+  ownedEntities    Entity[]               @relation("EntityOwner")
+  auditLogs        AuditLog[]             @relation("AuditActor")
+  approvalHistory  ApprovalHistory[]      @relation("ApprovalActor")
+  aiExecutionLogs  AIExecutionLog[]       @relation("AIRequestedBy")
+  campaignEvents   CivicCampaignEvent[]   @relation("CampaignEventUser")
+}
+
+// ============================================================
+// LAYER 6 — Civic Meme Studio (1 table, append-only event log)
+// Justification: Impact tracking requires an append-only event
+// log. ParameterValue has UNIQUE(entity_id, parameter_id) —
+// cannot store multiple events. AuditLog is for status
+// transitions, not user engagement. One minimal table is the
+// correct and only compliant solution.
+// ============================================================
+
+model CivicCampaignEvent {
+  event_id    Int      @id @default(autoincrement())
+  // campaign_entity_id: entity_id of the Civic Campaign entity
+  campaign_id Int
+  // event_type: 'view' | 'issue_click' | 'share_initiated' | 'participation'
+  event_type  String
+  // user_id is nullable — anonymous session views are permitted
+  user_id     Int?
+  // session_key: deduplicate views per user/session per day (SHA256 of user_id+session_id+date)
+  session_key String?
+  created_at  DateTime @default(now())
+
+  actorUser User? @relation("CampaignEventUser", fields: [user_id], references: [user_id], onDelete: SetNull)
+
+  @@index([campaign_id, event_type])
+  @@index([campaign_id, created_at])
+  @@index([session_key])
 }

@@ -170,7 +170,77 @@ export const governance = {
   analyze: (entityTypeId) => request('POST', '/governance/analyze', entityTypeId ? { entity_type_id: entityTypeId } : {}),
 };
 
+// ── Conversational Agent ──────────────────────────────────────────────────
+export const agent = {
+  /** Send one message turn to the agent.
+   *  @param {string} sessionId  - UUID generated client-side per conversation
+   *  @param {string} message    - Citizen's free-text message
+   *  @param {File|null} attachment - Optional document/photo file
+   */
+  chat: async (sessionId, message, attachment = null) => {
+    if (!attachment) {
+      return request('POST', '/agent/chat', { sessionId, message });
+    }
+    const token = getToken();
+    const formData = new FormData();
+    formData.append('sessionId', sessionId);
+    formData.append('message', message || '');
+    formData.append('attachment', attachment);
+
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(`${BASE}/agent/chat`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (res.status === 401) {
+      clearAuth();
+      window.dispatchEvent(new CustomEvent('auth:expired'));
+    }
+
+    const data = await res.json().catch(() => ({ success: false, error: 'Invalid server response' }));
+    if (!res.ok) {
+      const err = new Error(data.error || `HTTP ${res.status}`);
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
+    return data;
+  },
+
+  /** Clear session on page navigate away */
+  clearSession: (sessionId) => request('DELETE', `/agent/chat/${sessionId}`).catch(() => {}),
+};
+
+// ── Civic Meme Studio & Buzz ──────────────────────────────────────────────
+export const meme = {
+  getConfig:        ()                     => request('GET',  '/meme/config'),
+  checkEligibility: (issueId)              => request('GET',  `/meme/eligibility/${issueId}`),
+  generateCaptions: (body)                 => request('POST', '/meme/captions', body),
+  checkSafety:      (body)                 => request('POST', '/meme/safety-check', body),
+  createCampaign:   (body)                 => request('POST', '/meme/campaigns', body),
+  submitCampaign:   (id)                   => request('POST', `/meme/campaigns/${id}/submit`),
+  transition:       (id, to_status, reason)=> request('POST', `/meme/campaigns/${id}/transition`, { to_status, reason }),
+  report:           (id, reason)           => request('POST', `/meme/campaigns/${id}/report`, { reason }),
+  recordEvent:      (id, event_type, session_key) => request('POST', `/meme/campaigns/${id}/event`, { event_type, session_key }),
+  getImpact:        (id)                   => request('GET',  `/meme/campaigns/${id}/impact`),
+  getFeed:          (params = {})          => {
+    const q = new URLSearchParams(params).toString();
+    return request('GET', `/meme/feed${q ? '?' + q : ''}`);
+  },
+  getMy:            ()                     => request('GET',  '/meme/my'),
+  getCampaign:      (id)                   => request('GET',  `/meme/campaigns/${id}`),
+  listModeration:   (params = {})          => {
+    const q = new URLSearchParams(params).toString();
+    return request('GET', `/meme/campaigns${q ? '?' + q : ''}`);
+  },
+};
+
 // ── Health ────────────────────────────────────────────────────────────────
 export const health = () => request('GET', '/health');
+
 
 

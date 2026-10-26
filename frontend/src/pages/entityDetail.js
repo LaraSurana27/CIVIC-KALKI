@@ -25,11 +25,12 @@ export async function renderEntityDetail({ id }) {
   
   const app = document.getElementById('app');
   app.innerHTML = renderLayout(`
-    <div class="page-header mb-4">
+    <div class="page-header mb-4" style="display:flex; justify-content:space-between; align-items:flex-start;">
       <div class="page-header-left">
         <div class="topbar-breadcrumb mb-2"><a href="/entities" class="text-link">My Requests</a> / Case #${cleanId}</div>
         <h1 id="header-title">Loading Case...</h1>
       </div>
+      <div id="header-extra-actions" style="display:flex; gap:10px;"></div>
     </div>
     
     <div id="detail-content">
@@ -62,6 +63,18 @@ export async function renderEntityDetail({ id }) {
     }
     
     document.getElementById('header-title').textContent = entity.name;
+    const memeEligibleStatuses = ['approved', 'coordinator_approved', 'verified', 'in_progress', 'resolved', 'closed'];
+    const isMemeEligible = memeEligibleStatuses.includes(String(entity.status || '').toLowerCase()) && entity.entityType?.name !== 'Civic Campaign';
+    if (isMemeEligible) {
+      const extraActions = document.getElementById('header-extra-actions');
+      if (extraActions) {
+        extraActions.innerHTML = `
+          <a href="/meme/studio/${entity.entity_id}" class="btn btn-secondary" style="display:inline-flex; align-items:center; gap:6px; font-weight:700; border-color:#f59e0b; color:#d97706; background:#fffbeb;">
+            <span>⚡</span> Create Civic Meme
+          </a>
+        `;
+      }
+    }
     renderContent(document.getElementById('detail-content'), entity, values, audit, lineage, workflowMeta, moduleReports, user);
   } catch (err) {
     console.error('Failed to load case detail:', err);

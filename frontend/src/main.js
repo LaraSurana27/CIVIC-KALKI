@@ -16,6 +16,9 @@ import { renderModuleBuilder } from './pages/moduleBuilder.js';
 import { renderReports } from './pages/reports.js';
 import { renderModules } from './pages/modules.js';
 import { renderGovernanceIntelligence } from './pages/governanceIntelligence.js';
+import { renderAgentChat } from './pages/agentChat.js';
+import { renderMemeStudio } from './pages/memeStudio.js';
+import { renderCivicBuzz } from './pages/civicBuzz.js';
 
 // Setup Routes
 addRoute('/', renderHome);
@@ -34,6 +37,9 @@ addRoute('/profile', renderProfile);
 addRoute('/director', renderDashboard);
 addRoute('/coordinator', renderDashboard);
 addRoute('/workspace', renderDashboard);
+addRoute('/agent/chat', renderAgentChat);            // Conversational Agent V1
+addRoute('/meme/studio/:issueId', renderMemeStudio); // Civic Meme Studio
+addRoute('/buzz', renderCivicBuzz);                  // Civic Buzz Feed
 
 onNotFound(() => {
   document.getElementById('app').innerHTML = `
