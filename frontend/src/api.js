@@ -1,25 +1,30 @@
 // ── Centralized API layer ──────────────────────────────────────────────────
 // All network calls go through here. Uses the Vite proxy: /api → localhost:3000
+// Authentication is cookie-based (ck_session httpOnly). Token never in JS.
 
-import { getToken, clearAuth } from './auth.js';
+import { clearAuth } from './auth.js';
 
 const BASE = '/api';
 
 async function request(method, path, body = null, options = {}) {
-  const token = getToken();
-  const headers = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const headers = {
+    'Content-Type': 'application/json',
+    // Required by CSRF middleware for all same-origin requests
+    'X-Requested-With': 'ck-web',
+  };
 
   const config = {
     method,
     headers,
+    // Include the ck_session httpOnly cookie on every request
+    credentials: 'include',
     ...options,
   };
   if (body !== null) config.body = JSON.stringify(body);
 
   const res = await fetch(`${BASE}${path}`, config);
 
-  // If 401 from server, clear stale session
+  // If 401 from server, clear stale in-memory session state
   if (res.status === 401) {
     clearAuth();
     window.dispatchEvent(new CustomEvent('auth:expired'));
@@ -43,6 +48,7 @@ export const auth = {
   signup:         (name, email, password)       => request('POST', '/auth/signup',          { name, email, password }),
   changePassword: (current_password, new_password) => request('POST', '/auth/change-password', { current_password, new_password }),
   me:             ()                            => request('GET',  '/auth/me'),
+  logout:         ()                            => request('POST', '/auth/logout'),
 };
 
 // ── Admin ─────────────────────────────────────────────────────────────────
@@ -74,6 +80,7 @@ export const entities = {
   audit:      (id)              => request('GET',    `/entities/${id}/audit`),
   getLineage: (id)              => request('GET',    `/entities/${id}/lineage`),
   workflow:   (id)              => request('GET',    `/entities/${id}/workflow`),
+  nearby:     (lat, lng, radius_km = 10) => request('GET', `/entities/nearby?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}&radius_km=${encodeURIComponent(radius_km)}`),
 };
 
 // ── Parameter Values ─────────────────────────────────────────────────────
@@ -136,18 +143,13 @@ export const jurisdictions = {
 export const files = {
   /** Upload files for an entity parameter (multipart) */
   upload: async (entityId, parameterId, fileList) => {
-    const token = getToken();
-    const formData = new FormData();
-    formData.append('entity_id', entityId);
-    formData.append('parameter_id', parameterId);
-    for (const file of fileList) {
-      formData.append('files', file);
-    }
-    const headers = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const headers = {
+      'X-Requested-With': 'ck-web',
+    };
     const res = await fetch(`${BASE}/files/upload`, {
       method: 'POST',
       headers,
+      credentials: 'include',
       body: formData,
     });
     const data = await res.json().catch(() => ({ success: false, error: 'Invalid response' }));
@@ -181,18 +183,14 @@ export const agent = {
     if (!attachment) {
       return request('POST', '/agent/chat', { sessionId, message });
     }
-    const token = getToken();
-    const formData = new FormData();
-    formData.append('sessionId', sessionId);
-    formData.append('message', message || '');
-    formData.append('attachment', attachment);
-
-    const headers = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const headers = {
+      'X-Requested-With': 'ck-web',
+    };
 
     const res = await fetch(`${BASE}/agent/chat`, {
       method: 'POST',
       headers,
+      credentials: 'include',
       body: formData,
     });
 

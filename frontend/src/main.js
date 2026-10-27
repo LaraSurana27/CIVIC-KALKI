@@ -1,5 +1,7 @@
 import './style.css';
+import 'leaflet/dist/leaflet.css';
 import { initRouter, addRoute, onNotFound } from './router.js';
+import { initAuth } from './auth.js';
 import { initLanguageSupport } from './components/languageSelector.js';
 
 // Import Pages
@@ -19,6 +21,7 @@ import { renderGovernanceIntelligence } from './pages/governanceIntelligence.js'
 import { renderAgentChat } from './pages/agentChat.js';
 import { renderMemeStudio } from './pages/memeStudio.js';
 import { renderCivicBuzz } from './pages/civicBuzz.js';
+import { renderNearbyProtests } from './pages/nearbyProtests.js';
 
 // Setup Routes
 addRoute('/', renderHome);
@@ -30,6 +33,8 @@ addRoute('/modules', renderModules);
 addRoute('/entities', renderEntities);
 addRoute('/entities/new', renderEntityNew);
 addRoute('/entities/:id', renderEntityDetail);
+addRoute('/nearby', renderNearbyProtests);
+addRoute('/protests/nearby', renderNearbyProtests);
 addRoute('/admin', renderAdmin);
 addRoute('/module-builder', renderModuleBuilder);
 addRoute('/reports', renderReports);
@@ -52,12 +57,6 @@ onNotFound(() => {
   `;
 });
 
-// Initialize SPA Router
-initRouter();
-
-// Initialize Multi-Language Translation Engine
-initLanguageSupport();
-
 // Listen for global auth expiration (e.g. 401 from API)
 window.addEventListener('auth:expired', () => {
   import('./components/toast.js').then(m => {
@@ -65,3 +64,20 @@ window.addEventListener('auth:expired', () => {
   });
   import('./router.js').then(m => m.navigate('/login'));
 });
+
+// App Startup: Restore cookie session first, then initialize router & language support
+const appEl = document.getElementById('app');
+if (appEl && !appEl.innerHTML.trim()) {
+  appEl.innerHTML = `
+    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; gap:16px;">
+      <div class="spinner" style="width:36px; height:36px; border-width:3px;"></div>
+      <div style="font-size:14px; font-weight:600; color:var(--text-secondary);">Loading CIVIC-KALKI...</div>
+    </div>
+  `;
+}
+
+initAuth().finally(() => {
+  initRouter();
+  initLanguageSupport();
+});
+

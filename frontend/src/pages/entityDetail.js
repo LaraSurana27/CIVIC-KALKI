@@ -5,6 +5,7 @@ import { toastError, toastSuccess } from '../components/toast.js';
 import { showModal, closeModal } from '../components/modal.js';
 import { navigate } from '../router.js';
 import { getCapabilityPresentation, formatStatusLabel } from '../utils/terminology.js';
+import { renderReadOnlyMapHTML, initReadOnlyMaps } from '../components/ReadOnlyMap.js';
 
 function escapeHtml(str) {
   return String(str || '').replace(/[&<>"']/g, c =>
@@ -312,6 +313,7 @@ function renderContent(container, entity, values, audit, lineage, workflowMeta, 
 
     ${automationBoxHTML}
     ${aiCardHTML}
+    ${renderReadOnlyMapHTML(entity)}
     ${reportsShortcutHTML}
     ${lineageHTML}
 
@@ -385,6 +387,9 @@ function renderContent(container, entity, values, audit, lineage, workflowMeta, 
 
   // Attach Dynamic Action Button Listeners
   attachActionListeners(entity.entity_id);
+
+  // Initialize ReadOnlyMap if coordinates are present in entity response
+  initReadOnlyMaps();
 
   // Trigger full localization for dynamic entity fields and tabs
   if (typeof window.civicTranslatePage === 'function') {

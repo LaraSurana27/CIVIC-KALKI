@@ -5,6 +5,7 @@ import { toastError, toastSuccess } from '../components/toast.js';
 import { navigate } from '../router.js';
 import { getCapabilityPresentation } from '../utils/terminology.js';
 import { JurisdictionSelector } from '../components/jurisdictionSelector.js';
+import { createLocationPicker } from '../components/LocationPicker.js';
 
 const API_BASE = '/api';
 
@@ -20,6 +21,7 @@ let entityTypes = [];
 let currentCapability = null;
 /** @type {JurisdictionSelector|null} */
 let _jurisdictionSelectorInstance = null;
+let _locationPickerInstances = new Map();
 
 const UNIVERSAL_PARAM_KEYS = new Set([
   'title',
@@ -170,12 +172,18 @@ function renderField(param) {
   }
 
   // Determine if this field should be full-width
-  const isFullWidth = ['textarea', 'file'].includes(fieldType);
+  const isFullWidth = ['textarea', 'file', 'location'].includes(fieldType);
   const widthStyle = isFullWidth ? 'flex:1 1 100%; min-width:100%;' : 'flex:1 1 calc(50% - 8px); min-width:200px;';
 
   let fieldHtml = '';
 
   switch (fieldType) {
+    case 'location':
+      fieldHtml = `
+        <div id="location-picker-mount-${param.parameter_id}" class="location-picker-field-mount" data-parameter-id="${param.parameter_id}"></div>
+      `;
+      break;
+
     case 'textarea':
       fieldHtml = `<textarea name="${nameAttr}" class="form-control" rows="3" ${required} placeholder="Enter ${label.toLowerCase()}..."></textarea>`;
       break;
@@ -365,6 +373,16 @@ function renderForm(container, schema) {
   
   container.innerHTML = html;
   
+  // Initialize LocationPicker instances for any location parameter fields
+  _locationPickerInstances.forEach(p => p.destroy && p.destroy());
+  _locationPickerInstances.clear();
+  const locMounts = container.querySelectorAll('.location-picker-field-mount');
+  locMounts.forEach(mount => {
+    const paramId = mount.getAttribute('data-parameter-id');
+    const picker = createLocationPicker(mount);
+    if (picker) _locationPickerInstances.set(String(paramId), picker);
+  });
+
   const formEl = document.getElementById('dynamic-form');
   formEl.addEventListener('submit', handleFormSubmit);
   attachConditionalHandlers(formEl, schema);
@@ -467,24 +485,47 @@ async function handleFormSubmit(e) {
       }
     }
 
+    // Check if any LocationPicker provided coordinates
+    let pickedLocation = null;
+    for (const [paramId, picker] of _locationPickerInstances.entries()) {
+      const val = picker.getValue();
+      if (val && val.latitude != null && val.longitude != null) {
+        pickedLocation = val;
+        break;
+      }
+    }
+
     // 1. Create generic Entity (status set to submitted for real workflow start)
     const entityPayload = {
       entity_type_id: currentEntityTypeId,
       name: data._base_name.trim(),
       jurisdiction_id: jselVal.jurisdiction_id,
-      area: jselVal.display_path,
-      location: data._base_location ? data._base_location.trim() : null,
+      area: (pickedLocation && pickedLocation.area) ? pickedLocation.area : jselVal.display_path,
+      location: data._base_location ? data._base_location.trim() : (pickedLocation && pickedLocation.address ? pickedLocation.address : null),
       status: 'submitted',
+      ...(pickedLocation ? { latitude: pickedLocation.latitude, longitude: pickedLocation.longitude } : {}),
     };
     
     const entityRes = await apiEntities.create(entityPayload);
     const entityId = entityRes.data.entity_id;
+
+    // Send result to PUT /entities/:id as latitude/longitude (+ area) if picked via LocationPicker
+    if (pickedLocation && pickedLocation.latitude != null && pickedLocation.longitude != null) {
+      await apiEntities.update(entityId, {
+        latitude: pickedLocation.latitude,
+        longitude: pickedLocation.longitude,
+        ...(pickedLocation.area ? { area: pickedLocation.area } : {}),
+      });
+    }
     
-    // 2. Submit parameter values batch (excluding file params & disabled conditional params)
+    // 2. Submit parameter values batch (excluding file params, location params & disabled conditional params)
     const valuesPayload = [];
     for (const [key, value] of formData.entries()) {
       if (key.startsWith('param_')) {
         const paramId = Number(key.replace('param_', ''));
+        // Location fields are stored on the Entity itself, never as a ParameterValue
+        if (_locationPickerInstances.has(String(paramId))) continue;
+
         const inputEl = e.target.querySelector(`[name="${key}"]`);
         if (inputEl && (inputEl.type === 'file' || inputEl.disabled)) continue;
         
@@ -516,10 +557,12 @@ async function handleFormSubmit(e) {
         }
 
         try {
-          const token = localStorage.getItem('auth_token');
           await fetch(`${API_BASE}/files/upload`, {
             method: 'POST',
-            headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+            headers: {
+              'X-Requested-With': 'ck-web',
+            },
+            credentials: 'include',
             body: uploadData,
           });
         } catch (uploadErr) {
