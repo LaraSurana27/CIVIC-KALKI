@@ -29,7 +29,8 @@ model EntityType {
   entity_type_id Int     @id @default(autoincrement())
   domain_id      Int
   name           String
-  description    String?
+  description         String?
+  location_visibility String  @default("restricted")
 
   // Relations to parent
   domain Domain @relation(fields: [domain_id], references: [domain_id])
@@ -54,6 +55,8 @@ model Entity {
   jurisdiction_id Int?
   name            String
   location        String?
+  latitude        Float?
+  longitude       Float?
   area            String?
   status          String?
 
@@ -71,6 +74,7 @@ model Entity {
 
   @@index([owner_user_id])
   @@index([area, status])
+  @@index([latitude, longitude])
   @@index([jurisdiction_id])
 }
 
