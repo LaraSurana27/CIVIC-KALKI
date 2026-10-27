@@ -14,6 +14,7 @@
 const express = require('express');
 const router = express.Router({ mergeParams: true });
 const prisma = require('../db');
+const { canViewLocation } = require('../services/locationVisibility');
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MAX_VALUES_PER_REQUEST = 200;
@@ -40,7 +41,7 @@ function parsePositiveInt(value, fieldName) {
 // ── Helper: validate and normalise the values array ───────────────────────────
 /**
  * @param {any[]} values   Raw body values array
- * @param {Map<number, { parameter_id: number, mandatory: boolean }>} paramMap
+ * @param {Map<number, { parameter_id: number, mandatory: boolean, field_type?: string, field_key?: string }>} paramMap
  *        Map of existing ParameterMaster rows keyed by parameter_id.
  * @returns {{ parsed: { parameter_id: number, value: string|null }[], errors: string[] }}
  */
@@ -69,6 +70,14 @@ function validateValues(values, paramMap) {
     const paramInfo = paramMap.get(paramId);
     if (!paramInfo) {
       errors.push(`values[${i}]: parameter_id ${paramId} does not exist in ParameterMaster.`);
+      continue;
+    }
+
+    // ── location field_type check: location is never stored as ParameterValue ───
+    if (paramInfo.field_type === 'location') {
+      errors.push(
+        `values[${i}]: Parameter "${paramInfo.field_key || paramId}" is a location field. Coordinates cannot be stored as a ParameterValue. Please set the entity's latitude and longitude coordinates directly instead.`
+      );
       continue;
     }
 
@@ -147,7 +156,7 @@ router.post('/', async (req, res, next) => {
 
     const paramRows = await prisma.parameterMaster.findMany({
       where: { parameter_id: { in: requestedIds } },
-      select: { parameter_id: true, mandatory: true },
+      select: { parameter_id: true, mandatory: true, field_type: true, field_key: true },
     });
 
     const paramMap = new Map(paramRows.map((p) => [p.parameter_id, p]));
@@ -200,13 +209,14 @@ router.get('/', async (req, res, next) => {
     // ── Entity existence check ─────────────────────────────────────────────
     const entity = await prisma.entity.findUnique({
       where: { entity_id: entityId },
+      include: { entityType: true },
     });
     if (!entity) {
       return next(createError(`Entity with id ${entityId} was not found.`, 404));
     }
 
     // ── Fetch values ───────────────────────────────────────────────────────
-    const parameterValues = await prisma.parameterValue.findMany({
+    let parameterValues = await prisma.parameterValue.findMany({
       where: { entity_id: entityId },
       orderBy: { parameter_id: 'asc' },
       include: {
@@ -224,6 +234,14 @@ router.get('/', async (req, res, next) => {
         },
       },
     });
+
+    // ── Location visibility check on values ────────────────────────────────
+    const maySeeLocation = canViewLocation(entity, entity.entityType, req.user);
+    if (!maySeeLocation) {
+      parameterValues = parameterValues.filter(
+        (pv) => pv.parameterMaster?.field_type !== 'location'
+      );
+    }
 
     return res.status(200).json({ success: true, data: parameterValues });
   } catch (err) {
@@ -279,7 +297,7 @@ router.put('/', async (req, res, next) => {
 
     const paramRows = await prisma.parameterMaster.findMany({
       where: { parameter_id: { in: requestedIds } },
-      select: { parameter_id: true, mandatory: true },
+      select: { parameter_id: true, mandatory: true, field_type: true, field_key: true },
     });
 
     const paramMap = new Map(paramRows.map((p) => [p.parameter_id, p]));

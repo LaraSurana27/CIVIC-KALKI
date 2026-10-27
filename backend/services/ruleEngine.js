@@ -91,12 +91,14 @@ async function checkAndFireRules(entityId, eventType, depth = 0) {
           entity_type_id: rule.target_entity_type_id,
           name: newEntityName,
           location: sourceEntity.location, // inherit location from source
+          latitude: sourceEntity.latitude, // inherit latitude from source
+          longitude: sourceEntity.longitude, // inherit longitude from source
           area: sourceEntity.area, // inherit area from source
           status: newStatus,
         },
         include: {
           entityType: {
-            select: { entity_type_id: true, name: true },
+            select: { entity_type_id: true, name: true, location_visibility: true },
           },
         },
       });

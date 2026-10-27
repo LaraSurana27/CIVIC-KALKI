@@ -18,6 +18,7 @@ const { verifyToken, checkRole } = require('../middleware/auth');
 const { checkAndFireRules } = require('../services/ruleEngine');
 const { generateIntelligenceReport } = require('../services/aiSuggestion');
 const { executeWorkflowTransition, getWorkflowMasterRules, validateWorkflowTransition } = require('../services/workflowEngine');
+const { applyLocationVisibility, applyLocationVisibilityMany } = require('../services/locationVisibility');
 const prisma = require('../db');
 
 // ── Helper: create an HTTP-aware error ────────────────────────────────────────
@@ -37,6 +38,66 @@ function parsePositiveInt(value, fieldName) {
     );
   }
   return parsed;
+}
+
+// ── Helper: validate coordinates (latitude [-90,90], longitude [-180,180]) ───
+function validateCoordinates(latitude, longitude) {
+  const hasLat = latitude !== undefined && latitude !== null && latitude !== '';
+  const hasLng = longitude !== undefined && longitude !== null && longitude !== '';
+
+  if (hasLat !== hasLng) {
+    throw createError('Both "latitude" and "longitude" must be provided together, or neither.', 400);
+  }
+
+  if (hasLat && hasLng) {
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+
+    if (isNaN(lat) || typeof lat !== 'number' || lat < -90 || lat > 90) {
+      throw createError('"latitude" must be a valid number between -90 and 90.', 400);
+    }
+    if (isNaN(lng) || typeof lng !== 'number' || lng < -180 || lng > 180) {
+      throw createError('"longitude" must be a valid number between -180 and 180.', 400);
+    }
+    return { latitude: lat, longitude: lng };
+  }
+
+  return { latitude: null, longitude: null };
+}
+
+// ── Helper: exact Haversine distance in kilometers ───────────────────────────
+function haversineDistanceKm(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Earth's radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// ── Helper: check owner or staff role permission on entity ──────────────────
+function checkEntityOwnership(existingEntity, reqUser) {
+  if (!existingEntity || existingEntity.owner_user_id === null || existingEntity.owner_user_id === undefined) {
+    return true; // Unowned legacy entity
+  }
+
+  if (!reqUser || !reqUser.user_id) {
+    throw createError('Authentication is required to modify this entity.', 401);
+  }
+
+  const isOwner = Number(reqUser.user_id) === Number(existingEntity.owner_user_id);
+  const isPrivileged = ['admin', 'director', 'coordinator_area', 'coordinator_general'].includes(reqUser.role);
+
+  if (!isOwner && !isPrivileged) {
+    throw createError('You do not have permission to modify this entity.', 403);
+  }
+
+  return true;
 }
 
 // ── GET /entities/entity-types — list all EntityTypes ────────────────────────
@@ -170,9 +231,9 @@ function isAllowedWorkflowTransition({
 // POST /entities
 // Create a new entity (generic — entity_type_id determines "which type")
 // ─────────────────────────────────────────────────────────────────────────────
-router.post('/', verifyToken, async (req, res, next) => {
+router.post('/', async (req, res, next) => {
   try {
-    const { entity_type_id, name, location, area, jurisdiction_id, status } = req.body;
+    const { entity_type_id, name, location, latitude, longitude, area, jurisdiction_id, status } = req.body;
 
     // ── Input validation ─────────────────────────────────────────────────────
     if (entity_type_id === undefined || entity_type_id === null) {
@@ -181,6 +242,9 @@ router.post('/', verifyToken, async (req, res, next) => {
     if (!name || typeof name !== 'string' || name.trim() === '') {
       return next(createError('"name" is required and must be a non-empty string.', 400));
     }
+
+    // ── Coordinate validation ─────────────────────────────────────────────────
+    const coords = validateCoordinates(latitude, longitude);
 
     const parsedTypeId = parsePositiveInt(entity_type_id, 'entity_type_id');
 
@@ -218,26 +282,31 @@ router.post('/', verifyToken, async (req, res, next) => {
       resolvedArea = jurisdictionNode.name;
     }
 
-    // ── Create entity; ownership always comes from the authenticated user ───
+    // ── Create entity; ownership comes from req.user if present ───────────────
+    const ownerUserId = req.user ? req.user.user_id : null;
+
     const entity = await prisma.entity.create({
       data: {
         entity_type_id: parsedTypeId,
-        owner_user_id: req.user.user_id,
+        owner_user_id: ownerUserId,
         jurisdiction_id: parsedJurisdictionId,
         name: name.trim(),
         location: location ? String(location).trim() : null,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
         area: resolvedArea,
         status: status ? String(status).trim() : 'draft',
       },
       include: {
         entityType: {
-          select: { entity_type_id: true, name: true },
+          select: { entity_type_id: true, name: true, location_visibility: true },
         },
         jurisdiction: true,
       },
     });
 
-    return res.status(201).json({ success: true, data: entity });
+    const visibleEntity = applyLocationVisibility(entity, req.user);
+    return res.status(201).json({ success: true, data: visibleEntity });
   } catch (err) {
     return next(err);
   }
@@ -302,7 +371,7 @@ router.get('/', async (req, res, next) => {
         orderBy,
         include: {
           entityType: {
-            select: { entity_type_id: true, name: true },
+            select: { entity_type_id: true, name: true, location_visibility: true },
           },
           owner: {
             select: { user_id: true, name: true, email: true },
@@ -312,15 +381,109 @@ router.get('/', async (req, res, next) => {
       }),
     ]);
 
+    const visibleEntities = applyLocationVisibilityMany(entities, req.user);
+
     return res.status(200).json({
       success: true,
-      data: entities,
+      data: visibleEntities,
       pagination: {
         total,
         page,
         limit,
         totalPages: Math.ceil(total / limit),
       },
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /entities/nearby
+// Find approved public entities within a given radius using exact Haversine.
+// Declared BEFORE /:id route so 'nearby' is not parsed as an integer id.
+// Query params: ?lat= &lng= &radius_km= (default 10, max 50)
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/nearby', async (req, res, next) => {
+  try {
+    const { lat, lng, radius_km } = req.query;
+
+    if (lat === undefined || lat === null || lat === '' || lng === undefined || lng === null || lng === '') {
+      return next(createError('"lat" and "lng" query parameters are required.', 400));
+    }
+
+    const centerLat = Number(lat);
+    const centerLng = Number(lng);
+
+    if (isNaN(centerLat) || centerLat < -90 || centerLat > 90) {
+      return next(createError('"lat" must be a valid number between -90 and 90.', 400));
+    }
+    if (isNaN(centerLng) || centerLng < -180 || centerLng > 180) {
+      return next(createError('"lng" must be a valid number between -180 and 180.', 400));
+    }
+
+    let radius = 10;
+    if (radius_km !== undefined && radius_km !== '') {
+      const parsedRadius = Number(radius_km);
+      if (isNaN(parsedRadius) || parsedRadius <= 0) {
+        return next(createError('"radius_km" must be a positive number.', 400));
+      }
+      radius = Math.min(parsedRadius, 50);
+    }
+
+    // Bounding-box pre-filtering in Prisma
+    const latDelta = radius / 111.0;
+    const lngDelta = radius / (111.0 * Math.max(0.01, Math.cos((centerLat * Math.PI) / 180)));
+
+    const minLat = centerLat - latDelta;
+    const maxLat = centerLat + latDelta;
+    const minLng = centerLng - lngDelta;
+    const maxLng = centerLng + lngDelta;
+
+    const candidates = await prisma.entity.findMany({
+      where: {
+        entityType: {
+          location_visibility: 'public_when_approved',
+        },
+        status: { equals: 'approved', mode: 'insensitive' },
+        latitude: {
+          not: null,
+          gte: minLat,
+          lte: maxLat,
+        },
+        longitude: {
+          not: null,
+          gte: minLng,
+          lte: maxLng,
+        },
+      },
+      include: {
+        entityType: { select: { entity_type_id: true, name: true, location_visibility: true } },
+      },
+    });
+
+    const results = [];
+    for (const ent of candidates) {
+      const dist = haversineDistanceKm(centerLat, centerLng, ent.latitude, ent.longitude);
+      if (dist <= radius) {
+        results.push({
+          entity_id: ent.entity_id,
+          name: ent.name,
+          latitude: ent.latitude,
+          longitude: ent.longitude,
+          distance_km: Number(dist.toFixed(1)),
+          maps_url: `https://www.google.com/maps/dir/?api=1&destination=${ent.latitude},${ent.longitude}`,
+        });
+      }
+    }
+
+    results.sort((a, b) => a.distance_km - b.distance_km);
+    const limited = results.slice(0, 50);
+
+    return res.status(200).json({
+      success: true,
+      data: limited,
+      count: limited.length,
     });
   } catch (err) {
     return next(err);
@@ -364,7 +527,8 @@ router.get('/:id', async (req, res, next) => {
       );
     }
 
-    return res.status(200).json({ success: true, data: entity });
+    const visibleEntity = applyLocationVisibility(entity, req.user);
+    return res.status(200).json({ success: true, data: visibleEntity });
   } catch (err) {
     return next(err);
   }
@@ -412,8 +576,17 @@ router.put('/:id', async (req, res, next) => {
       );
     }
 
+    // ── Ownership protection: owner or privileged staff required ──────────────
+    checkEntityOwnership(existing, req.user);
+
     // ── Build update payload (only provided fields) ───────────────────────────
     const updateData = {};
+
+    if (req.body.latitude !== undefined || req.body.longitude !== undefined) {
+      const coords = validateCoordinates(req.body.latitude, req.body.longitude);
+      updateData.latitude = coords.latitude;
+      updateData.longitude = coords.longitude;
+    }
 
     if (entity_type_id !== undefined) {
       const parsedTypeId = parsePositiveInt(entity_type_id, 'entity_type_id');
@@ -473,7 +646,7 @@ router.put('/:id', async (req, res, next) => {
       data: updateData,
       include: {
         entityType: {
-          select: { entity_type_id: true, name: true },
+          select: { entity_type_id: true, name: true, location_visibility: true },
         },
         jurisdiction: true,
       },
@@ -501,7 +674,8 @@ router.put('/:id', async (req, res, next) => {
         });
     }
 
-    return res.status(200).json({ success: true, data: updated });
+    const visibleUpdated = applyLocationVisibility(updated, req.user);
+    return res.status(200).json({ success: true, data: visibleUpdated });
   } catch (err) {
     return next(err);
   }
@@ -525,6 +699,9 @@ router.delete('/:id', async (req, res, next) => {
         createError(`Entity with id ${entityId} was not found.`, 404)
       );
     }
+
+    // ── Ownership protection: owner or privileged staff required ──────────────
+    checkEntityOwnership(existing, req.user);
 
     // ── Guard: already soft-deleted ───────────────────────────────────────────
     if (existing.status === 'deleted') {
@@ -668,10 +845,22 @@ router.post('/:id/transition', verifyToken, checkRole(['citizen', 'coordinator_a
       user: req.user,
     });
 
+    // Apply location visibility to the updated entity before returning
+    const visibleTransitioned = applyLocationVisibility(result.updatedEntity, req.user);
+
+    // Also sanitize any auto-created child entities from the rule engine
+    const visibleRuleCreated = result.ruleResult && Array.isArray(result.ruleResult.createdEntities)
+      ? applyLocationVisibilityMany(result.ruleResult.createdEntities, req.user)
+      : result.ruleResult?.createdEntities;
+
+    const sanitizedRuleResult = result.ruleResult
+      ? { ...result.ruleResult, createdEntities: visibleRuleCreated }
+      : result.ruleResult;
+
     return res.status(200).json({
       success: true,
-      data: result.updatedEntity,
-      ruleResult: result.ruleResult,
+      data: visibleTransitioned,
+      ruleResult: sanitizedRuleResult,
       workflowSource: result.workflowSource,
       message: `Entity ${entityId} transitioned from "${result.previousStatus}" to "${result.newStatus}".`,
     });
@@ -832,11 +1021,15 @@ router.get('/:id/lineage', async (req, res, next) => {
       }
     });
 
+    // Apply location visibility to current and parent entities
+    const visibleCurrent = applyLocationVisibility(entity, req.user);
+    const visibleParent = parentEntity ? applyLocationVisibility(parentEntity, req.user) : null;
+
     return res.status(200).json({
       success: true,
       data: {
-        current: entity,
-        parent: parentEntity,
+        current: visibleCurrent,
+        parent: visibleParent,
         children,
         rules: activeRules,
       },

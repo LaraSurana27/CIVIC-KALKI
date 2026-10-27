@@ -71,10 +71,26 @@ async function generateIntelligenceReport(entityId, requestedByUserId = null) {
   }
 
   // Build field/value metadata context
-  const fieldSummaries = entity.parameterValues.map((pv) => {
-    const label = pv.parameterMaster?.label || pv.parameterMaster?.field_key || `Param #${pv.parameter_id}`;
-    return `- ${label}: ${pv.value || 'Not provided'}`;
-  });
+  const { canViewLocation } = require('./locationVisibility');
+  let includeLocation = false;
+  if (requestedByUserId) {
+    const requester = await prisma.user.findUnique({
+      where: { user_id: Number(requestedByUserId) },
+      select: { user_id: true, role: true, assignedArea: true },
+    });
+    if (requester && canViewLocation(entity, entity.entityType, requester)) {
+      includeLocation = true;
+    }
+  } else if (canViewLocation(entity, entity.entityType, null)) {
+    includeLocation = true;
+  }
+
+  const fieldSummaries = entity.parameterValues
+    .filter((pv) => includeLocation || pv.parameterMaster?.field_type !== 'location')
+    .map((pv) => {
+      const label = pv.parameterMaster?.label || pv.parameterMaster?.field_key || `Param #${pv.parameter_id}`;
+      return `- ${label}: ${pv.value || 'Not provided'}`;
+    });
 
   const promptText = `
 You are an expert civic governance advisor assisting a Municipal/State Director in evaluating submitted civic entities.
@@ -84,7 +100,7 @@ Analyze the following submitted entity data and provide a highly specific, factu
 Title / Name: ${entity.name}
 Entity Type / Module: ${entity.entityType?.name || 'Generic Entity'}
 Area: ${entity.area || 'Unassigned'}
-Location: ${entity.location || 'Not specified'}
+Location: ${includeLocation ? (entity.location || 'Not specified') : '[Restricted]'}
 Current Status: ${entity.status || 'draft'}
 
 Form Fields & Submitted Parameters:
