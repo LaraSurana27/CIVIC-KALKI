@@ -84,15 +84,22 @@ async function checkAndFireRules(entityId, eventType, depth = 0) {
     const newEntityName = `${sourceEntity.name} - ${targetTypeName}`;
     const newStatus = rule.auto_approve ? 'approved' : 'pending';
 
+    // Visibility-aware coordinate inheritance:
+    // Never copy coordinates from a parent whose location_visibility is "restricted"
+    // onto a child whose EntityType is "public_when_approved".
+    const parentVisibility = sourceEntity.entityType?.location_visibility || 'restricted';
+    const childVisibility = rule.targetEntityType?.location_visibility || 'restricted';
+    const canCopyLocation = shouldCopyLocation(parentVisibility, childVisibility);
+
     // ── Atomic: create entity + audit log + default parameters in one transaction ──────────────
     const { newEntity, auditEntry } = await prisma.$transaction(async (tx) => {
       const created = await tx.entity.create({
         data: {
           entity_type_id: rule.target_entity_type_id,
           name: newEntityName,
-          location: sourceEntity.location, // inherit location from source
-          latitude: sourceEntity.latitude, // inherit latitude from source
-          longitude: sourceEntity.longitude, // inherit longitude from source
+          location: canCopyLocation ? sourceEntity.location : null,
+          latitude: canCopyLocation ? sourceEntity.latitude : null,
+          longitude: canCopyLocation ? sourceEntity.longitude : null,
           area: sourceEntity.area, // inherit area from source
           status: newStatus,
         },
@@ -212,4 +219,24 @@ async function checkAndFireRules(entityId, eventType, depth = 0) {
   return result;
 }
 
-module.exports = { checkAndFireRules };
+/**
+ * Checks whether location/coordinates may be copied from parent to child entity.
+ * Copying is allowed ONLY when it cannot make the location more visible.
+ *
+ * Matrix:
+ * - restricted -> public_when_approved: FALSE (prevents leaking restricted coordinates to public)
+ * - restricted -> restricted: TRUE (same visibility)
+ * - public_when_approved -> public_when_approved: TRUE (same visibility)
+ * - public_when_approved -> restricted: TRUE (becomes more restrictive, no leakage)
+ */
+function shouldCopyLocation(parentVisibility, childVisibility) {
+  const normParent = String(parentVisibility || 'restricted').trim().toLowerCase();
+  const normChild = String(childVisibility || 'restricted').trim().toLowerCase();
+
+  if (normParent === 'restricted' && normChild === 'public_when_approved') {
+    return false;
+  }
+  return true;
+}
+
+module.exports = { checkAndFireRules, shouldCopyLocation };

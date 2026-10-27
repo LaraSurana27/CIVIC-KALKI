@@ -716,3 +716,32 @@ describe('Location Visibility Comprehensive Matrix', () => {
   });
 });
 
+// ═════════════════════════════════════════════════════════════════════════════
+// 11. Rule Engine Coordinate Inheritance Matrix (all 4 combinations)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('Rule Engine Coordinate Inheritance (shouldCopyLocation)', () => {
+  const { shouldCopyLocation } = require('../services/ruleEngine');
+
+  test('Combination 1: restricted parent -> public_when_approved child: FORBIDDEN (returns false)', () => {
+    // Copying coordinates from a restricted parent to a public-facing child would leak coordinates upon approval
+    expect(shouldCopyLocation('restricted', 'public_when_approved')).toBe(false);
+  });
+
+  test('Combination 2: restricted parent -> restricted child: ALLOWED (returns true)', () => {
+    // Both are restricted, no exposure elevation
+    expect(shouldCopyLocation('restricted', 'restricted')).toBe(true);
+  });
+
+  test('Combination 3: public_when_approved parent -> public_when_approved child: ALLOWED (returns true)', () => {
+    // Same visibility level
+    expect(shouldCopyLocation('public_when_approved', 'public_when_approved')).toBe(true);
+  });
+
+  test('Combination 4: public_when_approved parent -> restricted child: ALLOWED (returns true)', () => {
+    // Becomes more restrictive, no leakage
+    expect(shouldCopyLocation('public_when_approved', 'restricted')).toBe(true);
+  });
+});
+
+
