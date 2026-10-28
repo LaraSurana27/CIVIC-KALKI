@@ -26,10 +26,11 @@ model Domain {
 }
 
 model EntityType {
-  entity_type_id Int     @id @default(autoincrement())
-  domain_id      Int
-  name           String
-  description    String?
+  entity_type_id      Int     @id @default(autoincrement())
+  domain_id           Int
+  name                String
+  description         String?
+  location_visibility String?
 
   // Relations to parent
   domain Domain @relation(fields: [domain_id], references: [domain_id])
@@ -68,6 +69,7 @@ model Entity {
   approvalHistory  ApprovalHistory[]
   aiExecutionLogs  AIExecutionLog[]
   fileRepositories FileRepository[]
+  reviewTasks      EntityReviewTask[]
 
   @@index([owner_user_id])
   @@index([area, status])
@@ -380,6 +382,7 @@ model User {
   approvalHistory  ApprovalHistory[]      @relation("ApprovalActor")
   aiExecutionLogs  AIExecutionLog[]       @relation("AIRequestedBy")
   campaignEvents   CivicCampaignEvent[]   @relation("CampaignEventUser")
+  assignedReviewTasks EntityReviewTask[]  @relation("ReviewTaskReviewer")
 }
 
 // ============================================================
@@ -409,3 +412,32 @@ model CivicCampaignEvent {
   @@index([campaign_id, created_at])
   @@index([session_key])
 }
+
+// ============================================================
+// LAYER 7 — Multi-Authority Review & Governance Tasks (1 table)
+// Additive model to track parallel department reviews, SLA timers,
+// reasons required, and decision aggregations.
+// ============================================================
+
+model EntityReviewTask {
+  task_id          Int       @id @default(autoincrement())
+  entity_id        Int
+  authority_key    String    // e.g. 'police_traffic', 'pmc_fire', 'pmc_ward_office'
+  status           String    @default("pending") // 'pending' | 'approved' | 'request_changes' | 'rejected' | 'voided'
+  required_reason  String?   // Human-readable explanation of why this authority was required
+  matched_inputs   Json?     // Snapshot of field keys & values that triggered the requirement rule
+  decision_reason  String?   // Remarks/conditions from reviewer
+  reviewer_user_id Int?
+  due_date         DateTime? // SLA deadline
+  completed_at     DateTime?
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+
+  entity           Entity    @relation(fields: [entity_id], references: [entity_id], onDelete: Cascade)
+  reviewerUser     User?     @relation("ReviewTaskReviewer", fields: [reviewer_user_id], references: [user_id], onDelete: SetNull)
+
+  @@unique([entity_id, authority_key])
+  @@index([authority_key, status])
+  @@index([entity_id, status])
+}
+

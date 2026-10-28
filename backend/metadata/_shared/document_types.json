@@ -1,0 +1,40 @@
+{
+  "$schema": "./schema/document_types.schema.json",
+  "version": "1.0",
+  "verified": false,
+  "verification_note": "Document slot definitions are placeholder requirements pending official PMC / Police Single Window confirmation.",
+  "document_slots": [
+    {
+      "key": "id_proof",
+      "label": "Authorized Organizer ID Proof (Aadhaar / Voter ID / PAN)",
+      "allowed_extensions": [".pdf", ".jpg", ".jpeg", ".png"],
+      "max_size_mb": 5,
+      "required": true,
+      "verified": false
+    },
+    {
+      "key": "venue_consent",
+      "label": "Land Owner Consent / Housing Society NOC / Municipal Ground Booking",
+      "allowed_extensions": [".pdf", ".jpg", ".jpeg", ".png"],
+      "max_size_mb": 10,
+      "required": true,
+      "verified": false
+    },
+    {
+      "key": "pandal_layout_plan",
+      "label": "Pandal Dimension & Layout Map with Emergency Exit Corridors",
+      "allowed_extensions": [".pdf", ".png", ".jpg"],
+      "max_size_mb": 10,
+      "required": true,
+      "verified": false
+    },
+    {
+      "key": "previous_permission_copy",
+      "label": "Previous Year Permission Copy (if renewal / legacy mandal)",
+      "allowed_extensions": [".pdf", ".jpg", ".jpeg", ".png"],
+      "max_size_mb": 10,
+      "required": false,
+      "verified": false
+    }
+  ]
+}

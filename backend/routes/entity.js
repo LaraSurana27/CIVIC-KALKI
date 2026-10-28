@@ -17,7 +17,8 @@ const router = express.Router();
 const { verifyToken, checkRole } = require('../middleware/auth');
 const { checkAndFireRules } = require('../services/ruleEngine');
 const { generateIntelligenceReport } = require('../services/aiSuggestion');
-const { executeWorkflowTransition, getWorkflowMasterRules, validateWorkflowTransition } = require('../services/workflowEngine');
+const { executeWorkflowTransition, getWorkflowMasterRules, validateWorkflowTransition, evaluateReviewAggregationPolicy } = require('../services/workflowEngine');
+const { evaluateAndReconcileReviewTasks, getWhyRequiredAudit, submitAuthorityReview } = require('../services/authorityRoutingEngine');
 const prisma = require('../db');
 
 // ── Helper: create an HTTP-aware error ────────────────────────────────────────
@@ -864,4 +865,61 @@ router.post('/:id/ai-analysis', verifyToken, checkRole(['coordinator_area', 'coo
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /entities/:id/review-tasks
+// Returns why each authority was required and review task status for this entity.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/:id/review-tasks', verifyToken, async (req, res, next) => {
+  try {
+    const entityId = parsePositiveInt(req.params.id, 'id');
+    const tasks = await getWhyRequiredAudit(entityId);
+    const aggregation = await evaluateReviewAggregationPolicy(entityId);
+    return res.status(200).json({
+      success: true,
+      data: {
+        tasks,
+        aggregation,
+      },
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /entities/:id/review-tasks/:taskId/review
+// Submit department determination (approved, request_changes, rejected).
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/review-tasks/:taskId/review', verifyToken, checkRole(['director', 'coordinator_area', 'coordinator_general', 'admin']), async (req, res, next) => {
+  try {
+    const taskId = parsePositiveInt(req.params.taskId, 'taskId');
+    const { decision, reason } = req.body;
+    if (!decision) return next(createError('"decision" is required (approved, request_changes, rejected).', 400));
+    const updated = await submitAuthorityReview({
+      taskId,
+      decision: String(decision).trim().toLowerCase(),
+      reason,
+      reviewerUserId: req.user.user_id,
+    });
+    return res.status(200).json({ success: true, data: updated });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /entities/:id/reconcile-authorities
+// Re-evaluates requirement rules against current parameters and reconciles review tasks.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/reconcile-authorities', verifyToken, checkRole(['citizen', 'coordinator_area', 'coordinator_general', 'director', 'admin']), async (req, res, next) => {
+  try {
+    const entityId = parsePositiveInt(req.params.id, 'id');
+    const result = await evaluateAndReconcileReviewTasks(entityId);
+    return res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 module.exports = router;
+

@@ -1,0 +1,48 @@
+{
+  "$schema": "./schema/authorities.schema.json",
+  "version": "1.0",
+  "verified": false,
+  "verification_note": "Placeholder authority configurations pending official confirmation with Pune Municipal Corporation (PMC) and Pune Police.",
+  "authorities": [
+    {
+      "key": "police_traffic",
+      "name": "Pune Police Traffic Branch",
+      "jurisdiction": "Pune City Traffic Division",
+      "review_scope": "Traffic management, road diversions, pandal encroachment on vehicular carriageways, and parking arrangements.",
+      "default_sla_hours": 72,
+      "verified": false
+    },
+    {
+      "key": "police_local_station",
+      "name": "Local Police Station (Law & Order)",
+      "jurisdiction": "Ward / Chowki Jurisdiction",
+      "review_scope": "Law and order, crowd management, night sound restriction compliance, anti-social prevention, and security.",
+      "default_sla_hours": 48,
+      "verified": false
+    },
+    {
+      "key": "pmc_ward_office",
+      "name": "PMC Ward Field Office",
+      "jurisdiction": "Administrative Ward",
+      "review_scope": "Pandal structural safety, public footway clearance, sanitation, solid waste management, and municipal ground fees.",
+      "default_sla_hours": 48,
+      "verified": false
+    },
+    {
+      "key": "pmc_fire",
+      "name": "PMC Fire Brigade Headquarters",
+      "jurisdiction": "City Central Fire Control",
+      "review_scope": "Fire prevention, extinguisher accessibility, non-flammable fabric compliance, and emergency exit clearance.",
+      "default_sla_hours": 72,
+      "verified": false
+    },
+    {
+      "key": "other",
+      "name": "Specialized Civic Clearance Cell",
+      "jurisdiction": "Special Jurisdiction / MSEDCL / MPCB",
+      "review_scope": "Temporary electrical meter safety, pollution compliance, or specialized inter-agency clearances.",
+      "default_sla_hours": 96,
+      "verified": false
+    }
+  ]
+}

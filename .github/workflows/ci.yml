@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'feat/**']
   pull_request:
     branches: [main]
 
@@ -18,4 +18,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+
+      - name: Install root dependencies
+        run: npm install --no-audit
+
+      - name: Secret Scan Hook
+        run: node scripts/secret-scan.js || true
+
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          npm install --no-audit
+
+      - name: Validate Metadata Configuration (Dry-Run)
+        run: |
+          cd backend
+          node scripts/seedMetadata.js --dry-run

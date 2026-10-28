@@ -1,0 +1,437 @@
+{
+  "$schema": "./schema/entity_type.schema.json",
+  "domain": {
+    "key": "civic_events",
+    "name": "Civic Events",
+    "description": "Public community festivals, cultural celebrations, civic gatherings, and event logistics."
+  },
+  "entity_type": {
+    "key": "ganpati_event_permission",
+    "name": "Ganpati Event Permission",
+    "description": "Single-window civic permission application for Sarvajanik community festival pandals and processions.",
+    "version": "1.0",
+    "verified": false,
+    "verification_note": "All regulatory values, thresholds, document lists, and routing rules are placeholder configurations pending official PMC / Police confirmation."
+  },
+  "form": {
+    "name": "Ganpati Event Permission Application Form",
+    "sections": [
+      {
+        "key": "organizer_details",
+        "name": "Organizer Information",
+        "display_order": 1,
+        "subsections": [
+          {
+            "name": "Primary Organizer",
+            "parameters": [
+              {
+                "field_key": "organizer_name",
+                "label": "Authorized Organizer / Mandal President Name",
+                "field_type": "text",
+                "control_type": "input",
+                "mandatory": true,
+                "validation_rule": "required|min:3|max:100",
+                "help_text": "Enter the full legal name of the registered mandal head or event organizer."
+              },
+              {
+                "field_key": "organizer_contact",
+                "label": "Organizer Mobile Contact",
+                "field_type": "phone",
+                "control_type": "input",
+                "mandatory": true,
+                "validation_rule": "required|regex:^[6-9]\\d{9}$",
+                "help_text": "10-digit valid Indian mobile number for official SMS and status notices."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "venue_and_schedule",
+        "name": "Venue & Schedule",
+        "display_order": 2,
+        "subsections": [
+          {
+            "name": "Location & Timings",
+            "parameters": [
+              {
+                "field_key": "pandal_location",
+                "label": "Pandal Street Address & Location",
+                "field_type": "geo_point",
+                "control_type": "input",
+                "mandatory": true,
+                "validation_rule": "required|min:5|max:200",
+                "help_text": "Physical address, landmark, or GPS coordinates where the temporary structure is erected."
+              },
+              {
+                "field_key": "event_date",
+                "label": "Event Start Date",
+                "field_type": "date",
+                "control_type": "datepicker",
+                "mandatory": true,
+                "validation_rule": "required|future_or_today",
+                "help_text": "Date on which the pandal setup begins."
+              },
+              {
+                "field_key": "start_time",
+                "label": "Daily Opening Time",
+                "field_type": "time",
+                "control_type": "timepicker",
+                "mandatory": true,
+                "validation_rule": "required",
+                "help_text": "Daily hour when public darshan / gathering starts."
+              },
+              {
+                "field_key": "end_time",
+                "label": "Daily Concluding Time",
+                "field_type": "time",
+                "control_type": "timepicker",
+                "mandatory": true,
+                "validation_rule": "required|after:start_time",
+                "help_text": "Daily concluding time. Loudspeakers must cease by curfew."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "crowd_and_road",
+        "name": "Crowd & Road Usage",
+        "display_order": 3,
+        "subsections": [
+          {
+            "name": "Traffic & Public Space Impact",
+            "parameters": [
+              {
+                "field_key": "expected_crowd",
+                "label": "Expected Peak Daily Footfall / Crowd",
+                "field_type": "number",
+                "control_type": "input",
+                "mandatory": true,
+                "validation_rule": "required|integer|min:1",
+                "help_text": "Estimated peak concurrent attendees. Values >= 500 trigger police station review; >= 1000 trigger fire review."
+              },
+              {
+                "field_key": "road_usage",
+                "label": "Public Road / Footpath Encroachment",
+                "field_type": "enum",
+                "control_type": "dropdown",
+                "mandatory": true,
+                "options": {
+                  "choices": [
+                    { "value": "none", "label": "None — Completely inside private compound / open ground" },
+                    { "value": "partial", "label": "Partial — Occupies footpath or portion of lane" },
+                    { "value": "full", "label": "Full — Complete road closure or major diversion needed" }
+                  ]
+                },
+                "validation_rule": "required",
+                "help_text": "Indicate if any public right-of-way will be restricted."
+              },
+              {
+                "field_key": "road_usage_details",
+                "label": "Road Usage & Diversion Details",
+                "field_type": "textarea",
+                "control_type": "textarea",
+                "mandatory": false,
+                "visibility_rule": {
+                  "!=": [{ "var": "road_usage" }, "none"]
+                },
+                "validation_rule": "required_if:road_usage,partial,full",
+                "help_text": "Describe lane width, pedestrian passage maintained, and alternate traffic diversions."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "sound_and_acoustics",
+        "name": "Sound & Acoustics",
+        "display_order": 4,
+        "subsections": [
+          {
+            "name": "Amplification",
+            "parameters": [
+              {
+                "field_key": "sound_system",
+                "label": "Loudspeakers / Traditional Acoustic System Used?",
+                "field_type": "boolean",
+                "control_type": "checkbox",
+                "mandatory": false,
+                "help_text": "Check if sound boxes, dhol-tasha, or amplifiers will be operated."
+              },
+              {
+                "field_key": "sound_system_details",
+                "label": "Sound System Specifications & Decibel Compliance",
+                "field_type": "textarea",
+                "control_type": "textarea",
+                "mandatory": false,
+                "visibility_rule": {
+                  "==": [{ "var": "sound_system" }, true]
+                },
+                "validation_rule": "required_if:sound_system,true",
+                "help_text": "Specify box wattage, direction of speakers, and adherence to Supreme Court noise limits (10 PM curfew)."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "support_requirements",
+        "name": "Support Requirements",
+        "display_order": 5,
+        "subsections": [
+          {
+            "name": "Departmental Assistance",
+            "parameters": [
+              {
+                "field_key": "traffic_support_required",
+                "label": "Traffic Police Deployment / Diversion Support Required",
+                "field_type": "boolean",
+                "control_type": "checkbox",
+                "mandatory": false,
+                "help_text": "Request traffic wardens or barricading support from Traffic Police Branch."
+              },
+              {
+                "field_key": "police_support_required",
+                "label": "Local Police Law & Order Bandobast Required",
+                "field_type": "boolean",
+                "control_type": "checkbox",
+                "mandatory": false,
+                "help_text": "Request beat marshals or police presence for crowd safety."
+              },
+              {
+                "field_key": "fire_safety_requirement",
+                "label": "Fire Safety Readiness Checklist",
+                "field_type": "multi_enum",
+                "control_type": "checklist",
+                "mandatory": false,
+                "options": {
+                  "choices": [
+                    { "value": "fire_extinguishers_installed", "label": "ABC dry chemical fire extinguishers on-site (minimum 2)" },
+                    { "value": "unobstructed_emergency_exit", "label": "Dedicated 3-meter wide emergency exit corridor" },
+                    { "value": "flame_retardant_drapery", "label": "Flame-retardant cloth/tarpaulin certification" },
+                    { "value": "emergency_water_storage", "label": "Emergency water drum / sand buckets available" }
+                  ]
+                },
+                "help_text": "Select all active fire hazard prevention measures implemented at the pandal."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "document_uploads",
+        "name": "Document Clearances",
+        "display_order": 6,
+        "subsections": [
+          {
+            "name": "Mandatory Clearance Uploads",
+            "parameters": [
+              {
+                "field_key": "id_proof",
+                "label": "President / Secretary ID Proof (Aadhaar / Voter ID / PAN)",
+                "field_type": "file",
+                "control_type": "file",
+                "mandatory": true,
+                "validation_rule": "required|file|max_mb:5|mimes:pdf,jpg,png",
+                "help_text": "Government-issued photo identification proof of the applicant."
+              },
+              {
+                "field_key": "venue_consent",
+                "label": "Landowner Consent / Society NOC / Municipal Ground Allotment",
+                "field_type": "file",
+                "control_type": "file",
+                "mandatory": true,
+                "validation_rule": "required|file|max_mb:10|mimes:pdf,jpg,png",
+                "help_text": "Official letter of consent from the owner of the plot or local authority."
+              },
+              {
+                "field_key": "pandal_layout_plan",
+                "label": "Pandal Dimension & Layout Map with Emergency Exits",
+                "field_type": "file",
+                "control_type": "file",
+                "mandatory": true,
+                "validation_rule": "required|file|max_mb:10|mimes:pdf,jpg,png",
+                "help_text": "Architectural or hand-drawn sketch indicating length, width, and road offset."
+              },
+              {
+                "field_key": "previous_permission_copy",
+                "label": "Previous Year Permission Copy (Optional Renewal)",
+                "field_type": "file",
+                "control_type": "file",
+                "mandatory": false,
+                "validation_rule": "file|max_mb:10|mimes:pdf,jpg,png",
+                "help_text": "Copy of previous year's PMC / Police sanction if registered mandal."
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "workflow": {
+    "initial_state": "draft",
+    "states": [
+      { "key": "draft", "label": "Draft", "terminal": false },
+      { "key": "submitted", "label": "Submitted", "terminal": false, "sla_hours": 24 },
+      { "key": "coordinator_verification", "label": "Coordinator Verification", "terminal": false, "sla_hours": 48 },
+      { "key": "department_review", "label": "Department Review", "terminal": false, "sla_hours": 72 },
+      { "key": "approved", "label": "Approved", "terminal": true },
+      { "key": "request_changes", "label": "Request Changes", "terminal": false },
+      { "key": "rejected", "label": "Rejected", "terminal": true }
+    ],
+    "transitions": [
+      {
+        "from": "draft",
+        "to": "submitted",
+        "action": "submit",
+        "allowed_roles": ["citizen"],
+        "guards": ["all_mandatory_fields_present", "documents_uploaded"],
+        "side_effects": ["evaluate_authority_rules", "create_review_tasks", "audit_log"]
+      },
+      {
+        "from": "submitted",
+        "to": "coordinator_verification",
+        "action": "start_verification",
+        "allowed_roles": ["coordinator_area", "coordinator_general", "admin"],
+        "side_effects": ["audit_log"]
+      },
+      {
+        "from": "coordinator_verification",
+        "to": "department_review",
+        "action": "verify_and_route",
+        "allowed_roles": ["coordinator_area", "coordinator_general", "admin"],
+        "side_effects": ["dispatch_department_tasks", "audit_log"]
+      },
+      {
+        "from": "coordinator_verification",
+        "to": "request_changes",
+        "action": "request_coordinator_changes",
+        "allowed_roles": ["coordinator_area", "coordinator_general", "admin"],
+        "side_effects": ["audit_log", "notify_applicant"]
+      },
+      {
+        "from": "coordinator_verification",
+        "to": "rejected",
+        "action": "reject_verification",
+        "allowed_roles": ["coordinator_area", "coordinator_general", "admin"],
+        "side_effects": ["audit_log", "notify_applicant"]
+      },
+      {
+        "from": "department_review",
+        "to": "approved",
+        "action": "aggregate_approval",
+        "allowed_roles": ["director", "admin"],
+        "aggregation_policy": "all_must_approve",
+        "side_effects": ["audit_log", "trigger_relationship_rules", "generate_permit_certificate"]
+      },
+      {
+        "from": "department_review",
+        "to": "request_changes",
+        "action": "aggregate_request_changes",
+        "allowed_roles": ["director", "admin"],
+        "aggregation_policy": "any_request_changes",
+        "side_effects": ["audit_log", "notify_applicant"]
+      },
+      {
+        "from": "department_review",
+        "to": "rejected",
+        "action": "aggregate_rejection",
+        "allowed_roles": ["director", "admin"],
+        "aggregation_policy": "any_rejects",
+        "side_effects": ["audit_log", "notify_applicant"]
+      },
+      {
+        "from": "request_changes",
+        "to": "draft",
+        "action": "reopen_for_edit",
+        "allowed_roles": ["citizen"],
+        "side_effects": ["audit_log"]
+      }
+    ],
+    "resubmission_policy": {
+      "target_state_on_resubmit": "coordinator_verification",
+      "documentation": "When a citizen edits an application following Request Changes and resubmits, it routes back to Coordinator Verification to re-check amended documentation before departmental review."
+    }
+  },
+  "rules": {
+    "authority_routing": [
+      {
+        "id": "RULE-AUTH-TRAFFIC",
+        "authority_key": "police_traffic",
+        "description": "Requires Traffic Police branch review if public roadway is utilized or traffic support is requested.",
+        "condition": {
+          "or": [
+            { "!=": [{ "var": "road_usage" }, "none"] },
+            { "==": [{ "var": "traffic_support_required" }, true] }
+          ]
+        },
+        "matched_input_fields": ["road_usage", "traffic_support_required"]
+      },
+      {
+        "id": "RULE-AUTH-LOCAL-POLICE",
+        "authority_key": "police_local_station",
+        "description": "Requires local police station review if expected crowd meets threshold or police assistance is requested.",
+        "condition": {
+          "or": [
+            { "==": [{ "var": "police_support_required" }, true] },
+            { ">=": [{ "var": "expected_crowd" }, { "threshold": "crowd_threshold" }] }
+          ]
+        },
+        "matched_input_fields": ["police_support_required", "expected_crowd"]
+      },
+      {
+        "id": "RULE-AUTH-FIRE",
+        "authority_key": "pmc_fire",
+        "description": "Requires fire brigade clearance if high crowd threshold is exceeded or fire safety checklist is filled.",
+        "condition": {
+          "or": [
+            { "!=": [{ "var": "fire_safety_requirement" }, null] },
+            { ">=": [{ "var": "expected_crowd" }, { "threshold": "fire_threshold" }] }
+          ]
+        },
+        "matched_input_fields": ["fire_safety_requirement", "expected_crowd"]
+      },
+      {
+        "id": "RULE-AUTH-WARD",
+        "authority_key": "pmc_ward_office",
+        "description": "PMC Ward field office is unconditionally mandatory for municipal ground & structural verification.",
+        "condition": {
+          "==": [true, true]
+        },
+        "matched_input_fields": ["pandal_location"]
+      }
+    ]
+  },
+  "reports": [
+    {
+      "key": "permissions_by_status",
+      "name": "Event Permissions by Status",
+      "output_format": "grouped_count",
+      "filters": {
+        "groupBy": "status",
+        "metric": "COUNT",
+        "public_stats": true
+      }
+    },
+    {
+      "key": "pending_reviews_by_authority",
+      "name": "Pending Reviews by Authority & SLA",
+      "output_format": "table",
+      "filters": {
+        "status": "department_review",
+        "columns": ["entity_id", "name", "area", "status"]
+      }
+    },
+    {
+      "key": "applications_by_area_and_crowd",
+      "name": "Applications by Area & Expected Crowd",
+      "output_format": "grouped_count",
+      "filters": {
+        "groupBy": "area",
+        "metric": "SUM",
+        "metricField": "expected_crowd"
+      }
+    }
+  ]
+}
