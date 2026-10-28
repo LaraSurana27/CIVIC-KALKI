@@ -8,7 +8,7 @@
 
 ## 1. Summary of Changes
 
-This PR operationalizes the IEEE metadata-hierarchy research (*Offenhuber 2019*, *Janssen et al. 2022*) into the CIVIC-KALKI platform by configuring two comprehensive civic capabilities **purely as declarative metadata**:
+This PR operationalizes the 10-level metadata-hierarchy architecture (theoretically grounded in municipal datafication and workflow orchestration research by *Offenhuber 2019*, *Janssen et al. 2022*) into the CIVIC-KALKI platform by configuring two comprehensive civic capabilities **purely as declarative metadata**:
 1. **Ganpati Event Permission** (`civic_events.ganpati_event_permission.json`)
 2. **Resource Request** (`civic_events.resource_request.json`)
 

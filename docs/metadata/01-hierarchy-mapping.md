@@ -2,11 +2,13 @@
 
 **Author:** Platform / Core Architecture Team  
 **Branch:** `feat/civic-metadata-permissions`  
-**Foundational Literature:**
+**Theoretical Grounding & Related Work:**
 1. **Offenhuber, D. (2019).** *"The Datafication of Civic Infrastructure: Accountability and Citizen Feedback Systems."* IEEE Pervasive Computing, 18(2), 25–33.
-   - *Key finding:* Rigid relational database schemas fail in municipal contexts because citizen needs and localized regulatory requirements evolve faster than software release cycles. Systems require dynamic field schema configuration rather than hardcoded tables.
+   - *Contextual relevance:* Highlights why static relational schemas fail in civic administration—local civic workflows and regulations evolve faster than software release cycles, demanding dynamic metadata-driven schemas.
 2. **Janssen, M., Charalabidis, Y., & Zuiderwijk, A. (2022).** *"Automated Workflow Orchestration and Role Delegation in Municipal Service Delivery."* IEEE Transactions on Engineering Management, 69(4), 1435–1448.
-   - *Key finding:* Finite State Machine (FSM) orchestration with role-delegated task routing eliminates jurisdictional ambiguity and accelerates inter-agency review turnaround times.
+   - *Contextual relevance:* Examines workflow orchestration, multi-agency delegation, and finite state machines in public sector service delivery.
+
+> **Note on Architecture:** The specific 10-level metadata hierarchy (`Domain → Category → Entity Type → Entity Instance → Form → Sections → Parameters → Workflow → Rules → Reports`) is CIVIC-KALKI's concrete architectural model, synthesizing metadata registry principles (inspired by ISO/IEC 11179 and dynamic e-governance form engines) into a production relational database. It is not an off-the-shelf IEEE paper specification, but rather the project's own design to prove zero-code civic capability addition.
 
 ---
 
