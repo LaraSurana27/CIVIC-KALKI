@@ -8,4 +8,6 @@ module.exports = {
   clearMocks: true,
   // Verbose output
   verbose: true,
+  // 30s timeout for remote database calls
+  testTimeout: 30000,
 };

@@ -1,30 +1,28 @@
 const request = require('supertest');
 const app = require('../index');
 const prisma = require('../db');
-const seedTokens = require('../seed-tokens.json');
+const { createTestUser, cleanupAll, trackEntityId } = require('./helpers/authHelper');
 
 describe('AI Decision Layer: POST /entities/:id/ai-analysis', () => {
   let entityId;
-  let citizenToken;
-  let directorToken;
-  let adminToken;
+  let citizenHeaders;
+  let directorHeaders;
+  let adminHeaders;
 
   beforeAll(async () => {
-    // Obtain tokens from seedTokens
-    adminToken = seedTokens['demo.admin@example.com']?.token;
-    directorToken = seedTokens['demo.director@example.com']?.token;
+    const admin = await createTestUser({ role: 'admin' });
+    adminHeaders = admin.headers;
 
-    // Create a citizen user and get token
-    const email = `aitest-${Date.now()}@example.com`;
-    const signupRes = await request(app)
-      .post('/auth/signup')
-      .send({ name: 'AI Citizen Test', email, password: 'Password123' });
-    citizenToken = signupRes.body.data.token;
+    const director = await createTestUser({ role: 'director' });
+    directorHeaders = director.headers;
+
+    const citizen = await createTestUser({ role: 'citizen' });
+    citizenHeaders = citizen.headers;
 
     // Create a test entity
     const createRes = await request(app)
       .post('/entities')
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({
         entity_type_id: 1,
         name: 'AI Test Civic Movement',
@@ -33,21 +31,25 @@ describe('AI Decision Layer: POST /entities/:id/ai-analysis', () => {
         status: 'coordinator_approved',
       });
     entityId = createRes.body.data.entity_id;
+    trackEntityId(entityId);
   });
 
   afterAll(async () => {
+    await cleanupAll();
     await prisma.$disconnect();
   });
 
   test('Security: returns 401 Unauthorized when no token is provided', async () => {
-    const res = await request(app).post(`/entities/${entityId}/ai-analysis`);
+    const res = await request(app)
+      .post(`/entities/${entityId}/ai-analysis`)
+      .set('X-Requested-With', 'ck-web');
     expect(res.statusCode).toBe(401);
   });
 
   test('Security: returns 403 Forbidden when accessed by a Citizen', async () => {
     const res = await request(app)
       .post(`/entities/${entityId}/ai-analysis`)
-      .set('Authorization', `Bearer ${citizenToken}`);
+      .set(citizenHeaders);
     expect(res.statusCode).toBe(403);
   });
 
@@ -56,7 +58,7 @@ describe('AI Decision Layer: POST /entities/:id/ai-analysis', () => {
 
     const res = await request(app)
       .post(`/entities/${entityId}/ai-analysis`)
-      .set('Authorization', `Bearer ${adminToken}`);
+      .set(adminHeaders);
 
     // Check that a DB row was created in AIExecutionLog
     const countAfter = await prisma.aIExecutionLog.count({ where: { entity_id: entityId } });
@@ -88,24 +90,4 @@ describe('AI Decision Layer: POST /entities/:id/ai-analysis', () => {
       expect(latestLog.status).toBe('failed');
     }
   }, 30000);
-
-  afterAll(async () => {
-    try {
-      const aiEnts = await prisma.entity.findMany({
-        where: { name: { startsWith: 'AI Test' } },
-        select: { entity_id: true },
-      });
-      const ids = aiEnts.map((e) => e.entity_id);
-      if (ids.length > 0) {
-        await prisma.aIExecutionLog.deleteMany({ where: { entity_id: { in: ids } } });
-        await prisma.parameterValue.deleteMany({ where: { entity_id: { in: ids } } });
-        await prisma.auditLog.deleteMany({ where: { entity_id: { in: ids } } });
-        await prisma.approvalHistory.deleteMany({ where: { entity_id: { in: ids } } });
-        await prisma.entity.deleteMany({ where: { entity_id: { in: ids } } });
-      }
-      await prisma.user.deleteMany({ where: { email: 'ai.citizen@example.com' } });
-    } catch (e) {
-      // ignore
-    }
-  });
 });

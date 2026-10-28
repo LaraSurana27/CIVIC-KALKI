@@ -6,7 +6,7 @@ import { clearAuth } from './auth.js';
 
 const BASE = '/api';
 
-async function request(method, path, body = null, options = {}) {
+export async function request(method, path, body = null, options = {}) {
   const headers = {
     'Content-Type': 'application/json',
     // Required by CSRF middleware for all same-origin requests

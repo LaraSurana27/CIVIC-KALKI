@@ -37,7 +37,8 @@ function canViewLocation(entity, entityType, requester) {
   const isFinalApproved = normalizedStatus === 'approved';
 
   const typeConfig = entityType || entity.entityType;
-  const visibility = typeConfig?.location_visibility || 'restricted';
+  const rawVis = typeConfig?.location_visibility;
+  const visibility = rawVis ? String(rawVis).trim().toLowerCase() : 'hidden';
 
   // Rule 1: public_when_approved and final approved -> everyone can see
   if (visibility === 'public_when_approved' && isFinalApproved) {

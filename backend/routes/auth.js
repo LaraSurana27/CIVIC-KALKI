@@ -321,4 +321,8 @@ router.get('/me', verifyToken, async (req, res, next) => {
   }
 });
 
+router.signToken = signToken;
+router.getCookieOptions = getCookieOptions;
+router.getJwtLifetimeMs = getJwtLifetimeMs;
+
 module.exports = router;

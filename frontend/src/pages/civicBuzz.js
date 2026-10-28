@@ -9,19 +9,18 @@
  *  - "Report this meme" takedown flow (sets to under_review, hides immediately)
  */
 
-import { getUser, getToken } from '../auth.js';
+import { getUser } from '../auth.js';
 import { renderLayout, attachLayoutEvents } from '../components/layout.js';
 import { navigate } from '../router.js';
 import { toastError, toastSuccess, toast } from '../components/toast.js';
 import { renderMemeCard, exportMemeImage } from '../components/memeRenderer.js';
+import { request as apiRequest } from '../api.js';
 
 function escapeHtml(str) {
   return String(str || '').replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
   );
 }
-
-const API = '/api';
 
 // Deduplication session key for today
 function getSessionKey() {
@@ -32,18 +31,6 @@ function getSessionKey() {
   }
   const today = new Date().toISOString().slice(0, 10);
   return `${sid}_${today}`;
-}
-
-async function apiRequest(method, path, body = null) {
-  const token = getToken();
-  const headers = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  const config = { method, headers };
-  if (body) config.body = JSON.stringify(body);
-  const res = await fetch(`${API}${path}`, config);
-  const data = await res.json().catch(() => ({ success: false, error: 'Server error' }));
-  if (!res.ok) throw Object.assign(new Error(data.error || `HTTP ${res.status}`), { data });
-  return data;
 }
 
 let activeTab = 'feed'; // 'feed' | 'my'

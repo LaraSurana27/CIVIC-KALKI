@@ -6,30 +6,17 @@
  * State is kept in memory (no page reloads between steps).
  */
 
-import { requireAuth, getUser, getToken } from '../auth.js';
+import { requireAuth, getUser } from '../auth.js';
 import { renderLayout, attachLayoutEvents } from '../components/layout.js';
 import { navigate } from '../router.js';
 import { toastError, toastSuccess } from '../components/toast.js';
 import { renderMemeCard } from '../components/memeRenderer.js';
+import { request as apiRequest } from '../api.js';
 
 function escapeHtml(str) {
   return String(str || '').replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
   );
-}
-
-const API = '/api';
-
-async function apiRequest(method, path, body = null) {
-  const token = getToken();
-  const headers = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  const config = { method, headers };
-  if (body) config.body = JSON.stringify(body);
-  const res = await fetch(`${API}${path}`, config);
-  const data = await res.json().catch(() => ({ success: false, error: 'Server error' }));
-  if (!res.ok) throw Object.assign(new Error(data.error || `HTTP ${res.status}`), { data });
-  return data;
 }
 
 // Wizard state

@@ -1,25 +1,10 @@
 const request = require('supertest');
 const app = require('../index');
 const prisma = require('../db');
-const jwt = require('jsonwebtoken');
-
-const JWT_SECRET = process.env.JWT_SECRET || 'development-secret-change-me';
-
-function generateTestToken(user) {
-  return jwt.sign(
-    {
-      user_id: user.user_id,
-      name: user.name,
-      role: user.role,
-      assigned_area: user.assignedArea || null,
-    },
-    JWT_SECRET,
-    { expiresIn: '1h' }
-  );
-}
+const { createTestUser, cleanupAll, trackEntityId } = require('./helpers/authHelper');
 
 describe('Phase 2 — Generic Report Engine Tests (ReportMaster)', () => {
-  let citizenToken, coordinatorAreaToken, directorToken;
+  let citizenHeaders, coordinatorAreaHeaders, directorHeaders;
   let citizenUser, coordinatorAreaUser, directorUser;
   let grievanceEntityType;
   let seededReportId;
@@ -28,14 +13,18 @@ describe('Phase 2 — Generic Report Engine Tests (ReportMaster)', () => {
   let createdEntities = [];
 
   beforeAll(async () => {
-    // 1. Fetch seed users
-    citizenUser = await prisma.user.findFirst({ where: { role: 'citizen' } });
-    coordinatorAreaUser = await prisma.user.findFirst({ where: { role: 'coordinator_area' } });
-    directorUser = await prisma.user.findFirst({ where: { role: 'director' } });
+    // 1. Create ephemeral test users
+    const cit = await createTestUser({ role: 'citizen' });
+    citizenUser = cit.user;
+    citizenHeaders = cit.headers;
 
-    citizenToken = generateTestToken(citizenUser);
-    coordinatorAreaToken = generateTestToken(coordinatorAreaUser);
-    directorToken = generateTestToken(directorUser);
+    const coord = await createTestUser({ role: 'coordinator_area', assignedArea: 'Sector 5' });
+    coordinatorAreaUser = coord.user;
+    coordinatorAreaHeaders = coord.headers;
+
+    const dir = await createTestUser({ role: 'director' });
+    directorUser = dir.user;
+    directorHeaders = dir.headers;
 
     // 2. Fetch Grievance EntityType
     grievanceEntityType = await prisma.entityType.findFirst({ where: { name: 'Grievance' } });
@@ -58,6 +47,7 @@ describe('Phase 2 — Generic Report Engine Tests (ReportMaster)', () => {
   });
 
   afterAll(async () => {
+    await cleanupAll();
     // Clean up created entities
     for (const entId of createdEntities) {
       await prisma.parameterValue.deleteMany({ where: { entity_id: entId } });
@@ -76,7 +66,7 @@ describe('Phase 2 — Generic Report Engine Tests (ReportMaster)', () => {
   test('Test 1: Report definition can be retrieved by list and ID', async () => {
     const resList = await request(app)
       .get('/reports')
-      .set('Authorization', `Bearer ${directorToken}`);
+      .set(directorHeaders);
     expect(resList.status).toBe(200);
     expect(resList.body.success).toBe(true);
     expect(Array.isArray(resList.body.data)).toBe(true);
@@ -84,7 +74,7 @@ describe('Phase 2 — Generic Report Engine Tests (ReportMaster)', () => {
 
     const resSingle = await request(app)
       .get(`/reports/${seededReportId}`)
-      .set('Authorization', `Bearer ${directorToken}`);
+      .set(directorHeaders);
     expect(resSingle.status).toBe(200);
     expect(resSingle.body.success).toBe(true);
     expect(resSingle.body.data.report_id).toBe(seededReportId);
@@ -95,7 +85,7 @@ describe('Phase 2 — Generic Report Engine Tests (ReportMaster)', () => {
   test('Test 2: Valid report executes successfully and returns structured JSON', async () => {
     const resExec = await request(app)
       .get(`/reports/${seededReportId}/execute`)
-      .set('Authorization', `Bearer ${directorToken}`);
+      .set(directorHeaders);
     expect(resExec.status).toBe(200);
     expect(resExec.body.success).toBe(true);
     expect(resExec.body.data).toHaveProperty('reportId', seededReportId);
@@ -127,7 +117,7 @@ describe('Phase 2 — Generic Report Engine Tests (ReportMaster)', () => {
 
     const resExec = await request(app)
       .get(`/reports/${countReport.report_id}/execute`)
-      .set('Authorization', `Bearer ${directorToken}`);
+      .set(directorHeaders);
     expect(resExec.status).toBe(200);
     expect(resExec.body.data.outputFormat).toBe('count');
     expect(resExec.body.data.rows[0].total_count).toBeGreaterThanOrEqual(2);
@@ -150,7 +140,7 @@ describe('Phase 2 — Generic Report Engine Tests (ReportMaster)', () => {
 
     const resExec = await request(app)
       .get(`/reports/${seededReportId}/execute`)
-      .set('Authorization', `Bearer ${directorToken}`);
+      .set(directorHeaders);
     expect(resExec.status).toBe(200);
 
     const rows = resExec.body.data.rows;
@@ -207,7 +197,7 @@ describe('Phase 2 — Generic Report Engine Tests (ReportMaster)', () => {
 
     const resSum = await request(app)
       .get(`/reports/${sumReport.report_id}/execute`)
-      .set('Authorization', `Bearer ${directorToken}`);
+      .set(directorHeaders);
 
     expect(resSum.status).toBe(200);
     const aggRow = resSum.body.data.rows.find((r) => r.area === 'AggArea');
@@ -231,7 +221,7 @@ describe('Phase 2 — Generic Report Engine Tests (ReportMaster)', () => {
 
     const resFiltered = await request(app)
       .post(`/reports/${seededReportId}/execute`)
-      .set('Authorization', `Bearer ${directorToken}`)
+      .set(directorHeaders)
       .send({ status: 'approved' });
 
     expect(resFiltered.status).toBe(200);
@@ -253,7 +243,7 @@ describe('Phase 2 — Generic Report Engine Tests (ReportMaster)', () => {
 
     const res = await request(app)
       .get(`/reports/${invalidReport.report_id}/execute`)
-      .set('Authorization', `Bearer ${directorToken}`);
+      .set(directorHeaders);
 
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
@@ -281,7 +271,7 @@ describe('Phase 2 — Generic Report Engine Tests (ReportMaster)', () => {
 
     const resCoord = await request(app)
       .get(`/reports/${seededReportId}/execute`)
-      .set('Authorization', `Bearer ${coordinatorAreaToken}`);
+      .set(coordinatorAreaHeaders);
 
     expect(resCoord.status).toBe(200);
     const rows = resCoord.body.data.rows;
@@ -332,7 +322,7 @@ describe('Phase 2 — Generic Report Engine Tests (ReportMaster)', () => {
     // 4. Execute report via generic Report Engine endpoint
     const resPark = await request(app)
       .get(`/reports/${parkReportId}/execute`)
-      .set('Authorization', `Bearer ${directorToken}`);
+      .set(directorHeaders);
 
     expect(resPark.status).toBe(200);
     expect(resPark.body.success).toBe(true);

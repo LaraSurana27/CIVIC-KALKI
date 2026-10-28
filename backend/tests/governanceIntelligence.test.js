@@ -1,18 +1,23 @@
 const request = require('supertest');
 const app = require('../index');
 const prisma = require('../db');
-const seedTokens = require('../seed-tokens.json');
+const { createTestUser, cleanupAll } = require('./helpers/authHelper');
 
 describe('Governance Intelligence Layer', () => {
-  let citizenToken;
-  let directorToken;
-  let adminToken;
+  let citizenHeaders;
+  let directorHeaders;
+  let adminHeaders;
   let entityTypeId;
 
   beforeAll(async () => {
-    adminToken = seedTokens['demo.admin@example.com']?.token;
-    directorToken = seedTokens['demo.director@example.com']?.token;
-    citizenToken = seedTokens['demo.citizen@example.com']?.token;
+    const admin = await createTestUser({ role: 'admin' });
+    adminHeaders = admin.headers;
+
+    const director = await createTestUser({ role: 'director' });
+    directorHeaders = director.headers;
+
+    const citizen = await createTestUser({ role: 'citizen' });
+    citizenHeaders = citizen.headers;
 
     const donationType = await prisma.entityType.findFirst({
       where: { name: 'Donation Transaction' },
@@ -23,6 +28,7 @@ describe('Governance Intelligence Layer', () => {
   });
 
   afterAll(async () => {
+    await cleanupAll();
     await prisma.$disconnect();
   });
 
@@ -35,14 +41,14 @@ describe('Governance Intelligence Layer', () => {
     test('GET /governance/config: returns 403 when accessed by a Citizen', async () => {
       const res = await request(app)
         .get('/governance/config')
-        .set('Authorization', `Bearer ${citizenToken}`);
+        .set(citizenHeaders);
       expect(res.statusCode).toBe(403);
     });
 
     test('GET /governance/config: returns 200 with module config for Director', async () => {
       const res = await request(app)
         .get('/governance/config')
-        .set('Authorization', `Bearer ${directorToken}`);
+        .set(directorHeaders);
       expect(res.statusCode).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.data.entity_type_name).toBe('Donation Transaction');
@@ -50,14 +56,16 @@ describe('Governance Intelligence Layer', () => {
     });
 
     test('POST /governance/analyze: returns 401 when no token is provided', async () => {
-      const res = await request(app).post('/governance/analyze');
+      const res = await request(app)
+        .post('/governance/analyze')
+        .set('X-Requested-With', 'ck-web');
       expect(res.statusCode).toBe(401);
     });
 
     test('POST /governance/analyze: returns 403 when accessed by a Citizen', async () => {
       const res = await request(app)
         .post('/governance/analyze')
-        .set('Authorization', `Bearer ${citizenToken}`)
+        .set(citizenHeaders)
         .send({ entity_type_id: entityTypeId });
       expect(res.statusCode).toBe(403);
     });
@@ -67,7 +75,7 @@ describe('Governance Intelligence Layer', () => {
     test('POST /governance/analyze: executes analysis and returns full schema for Director/Admin', async () => {
       const res = await request(app)
         .post('/governance/analyze')
-        .set('Authorization', `Bearer ${directorToken}`)
+        .set(directorHeaders)
         .send({ entity_type_id: entityTypeId });
 
       expect(res.statusCode).toBe(200);
@@ -137,6 +145,7 @@ describe('Governance Intelligence Layer', () => {
         expect(log).toBeDefined();
         expect(log.entity_id).toBeNull();
         expect(log.analysis_type).toBe('governance');
+        await prisma.aIExecutionLog.deleteMany({ where: { ai_execution_log_id: data.log_id } }).catch(() => {});
       }
     }, 45000);
   });

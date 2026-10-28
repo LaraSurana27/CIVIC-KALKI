@@ -31,6 +31,14 @@ jest.mock('../services/agentIntentRouter', () => ({
 
 // ── Mock prisma ───────────────────────────────────────────────────────────────
 jest.mock('../db', () => ({
+  user: {
+    findUnique: jest.fn().mockImplementation(async ({ where }) => ({
+      user_id: where.user_id || 88,
+      name: 'Test Citizen',
+      role: 'citizen',
+      assignedArea: null,
+    })),
+  },
   entityType: { findFirst: jest.fn(), findMany: jest.fn() },
   formMaster: { findFirst: jest.fn() },
   entity: { findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
@@ -59,13 +67,12 @@ const {
 
 const request = require('supertest');
 const app = require('../index');
-const jwt = require('jsonwebtoken');
+const { getAuthHeaders } = require('./helpers/authHelper');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'development-secret-change-me';
 const CITIZEN_USER_ID = 88;
 
-function makeToken(userId = CITIZEN_USER_ID, role = 'citizen') {
-  return jwt.sign({ user_id: userId, name: 'Test Citizen', role }, JWT_SECRET, { expiresIn: '1h' });
+function makeAuthHeaders(userId = CITIZEN_USER_ID, role = 'citizen') {
+  return getAuthHeaders({ user_id: userId, name: 'Test Citizen', role, assignedArea: null });
 }
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -508,14 +515,17 @@ describe('continueFormFilling() — confirming phase (unit)', () => {
 
 describe('POST /agent/chat — HTTP validation', () => {
   test('401 if no token', async () => {
-    const res = await request(app).post('/agent/chat').send({ sessionId: 'abc', message: 'hello' });
+    const res = await request(app)
+      .post('/agent/chat')
+      .set('X-Requested-With', 'ck-web')
+      .send({ sessionId: 'abc', message: 'hello' });
     expect(res.statusCode).toBe(401);
   });
 
   test('400 if sessionId missing', async () => {
     const res = await request(app)
       .post('/agent/chat')
-      .set('Authorization', `Bearer ${makeToken()}`)
+      .set(makeAuthHeaders())
       .send({ message: 'hello' });
     expect(res.statusCode).toBe(400);
     expect(res.body.error || res.body.message || '').toMatch(/sessionId/i);
@@ -524,7 +534,7 @@ describe('POST /agent/chat — HTTP validation', () => {
   test('400 if message missing', async () => {
     const res = await request(app)
       .post('/agent/chat')
-      .set('Authorization', `Bearer ${makeToken()}`)
+      .set(makeAuthHeaders())
       .send({ sessionId: 'test-session' });
     expect(res.statusCode).toBe(400);
     expect(res.body.error || res.body.message || '').toMatch(/message/i);
@@ -533,7 +543,7 @@ describe('POST /agent/chat — HTTP validation', () => {
   test('400 if message exceeds 2000 chars', async () => {
     const res = await request(app)
       .post('/agent/chat')
-      .set('Authorization', `Bearer ${makeToken()}`)
+      .set(makeAuthHeaders())
       .send({ sessionId: 'test-session', message: 'a'.repeat(2001) });
     expect(res.statusCode).toBe(400);
     expect(res.body.error || res.body.message || '').toMatch(/long/i);
@@ -560,7 +570,7 @@ describe('POST /agent/chat — HTTP validation', () => {
 
     const res = await request(app)
       .post('/agent/chat')
-      .set('Authorization', `Bearer ${makeToken()}`)
+      .set(makeAuthHeaders())
       .send({ sessionId: httpSid, message: 'yes' });
 
     expect(res.statusCode).toBe(200);
@@ -733,7 +743,7 @@ describe('Document and Photo Upload & Binding', () => {
 
     const res = await request(app)
       .post('/agent/chat')
-      .set('Authorization', `Bearer ${makeToken()}`)
+      .set(makeAuthHeaders())
       .field('sessionId', httpSid)
       .field('message', 'yes')
       .attach('attachment', Buffer.from('fake image content'), 'test_evidence.png');

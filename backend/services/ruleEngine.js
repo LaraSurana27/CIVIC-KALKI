@@ -230,10 +230,11 @@ async function checkAndFireRules(entityId, eventType, depth = 0) {
  * - public_when_approved -> restricted: TRUE (becomes more restrictive, no leakage)
  */
 function shouldCopyLocation(parentVisibility, childVisibility) {
-  const normParent = String(parentVisibility || 'restricted').trim().toLowerCase();
-  const normChild = String(childVisibility || 'restricted').trim().toLowerCase();
+  const normParent = String(parentVisibility || 'hidden').trim().toLowerCase();
+  const normChild = String(childVisibility || 'hidden').trim().toLowerCase();
 
-  if (normParent === 'restricted' && normChild === 'public_when_approved') {
+  const isParentHidden = normParent === 'hidden' || normParent === 'restricted';
+  if (isParentHidden && normChild === 'public_when_approved') {
     return false;
   }
   return true;

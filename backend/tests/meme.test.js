@@ -1,5 +1,5 @@
 /**
- * CIVIC-KALKI — Meme Studio Test Suite (Section 9)
+ * CIVIC-KALKI ï¿½ Meme Studio Test Suite (Section 9)
  * All deterministic; no live API calls (Gemini mocked).
  *
  * Covers:
@@ -19,39 +19,7 @@
 const request = require('supertest');
 const app = require('../index');
 const prisma = require('../db');
-const jwt = require('jsonwebtoken');
-
-const JWT_SECRET = process.env.JWT_SECRET || 'development-secret-change-me';
-
-// -- Mock Google Generative AI (no live API) ----------------------------------
-jest.mock('@google/generative-ai', () => {
-  return {
-    GoogleGenerativeAI: jest.fn().mockImplementation(() => ({
-      getGenerativeModel: jest.fn().mockReturnValue({
-        generateContent: jest.fn().mockResolvedValue({
-          response: {
-            text: () => JSON.stringify({
-              options: [
-                { headline: 'Pothole life got real', caption: 'Me checking the same pothole every day like a long-term relationship. ???', humor_level: 'light' },
-                { headline: 'Road? What road?', caption: 'When you know the pothole better than your own family. ??', humor_level: 'light' },
-                { headline: 'Local landmark unlocked', caption: 'Report filed. Pothole still thriving. Some things never change.', humor_level: 'light' },
-              ],
-              uses_only_provided_facts: true,
-            }),
-          },
-        }),
-      }),
-    })),
-  };
-});
-
-function genToken(user) {
-  return jwt.sign(
-    { user_id: user.user_id, name: user.name, role: user.role, assigned_area: user.assignedArea || null },
-    JWT_SECRET,
-    { expiresIn: '1h' }
-  );
-}
+const { createTestUser, cleanupAll, trackEntityId } = require('./helpers/authHelper');
 
 // -- Import safety functions directly for unit tests -------------------------
 const { deterministicFilter } = require('../services/memeSafety');
@@ -63,9 +31,9 @@ const {
 } = require('../services/memeConfig');
 
 // ----------------------------------------------------------------------------
-// SUITE 1 — Deterministic filter unit tests (no DB, no API)
+// SUITE 1 ï¿½ Deterministic filter unit tests (no DB, no API)
 // ----------------------------------------------------------------------------
-describe('Suite 1 — Deterministic Safety Filter', () => {
+describe('Suite 1 ï¿½ Deterministic Safety Filter', () => {
 
   test('1.1 Clean caption passes', () => {
     const result = deterministicFilter(
@@ -138,9 +106,9 @@ describe('Suite 1 — Deterministic Safety Filter', () => {
 });
 
 // ----------------------------------------------------------------------------
-// SUITE 2 — Config correctness (unit)
+// SUITE 2 ï¿½ Config correctness (unit)
 // ----------------------------------------------------------------------------
-describe('Suite 2 — Config Allowlist/Blocklist Correctness', () => {
+describe('Suite 2 ï¿½ Config Allowlist/Blocklist Correctness', () => {
 
   test('2.1 Publicly visible statuses are correct', () => {
     expect(PUBLICLY_VISIBLE_STATUSES).toContain('coordinator_approved');
@@ -165,26 +133,26 @@ describe('Suite 2 — Config Allowlist/Blocklist Correctness', () => {
 });
 
 // ----------------------------------------------------------------------------
-// SUITE 3 — API integration tests
+// SUITE 3 ï¿½ API integration tests
 // ----------------------------------------------------------------------------
-describe('Suite 3 — Meme API Integration', () => {
+describe('Suite 3 ï¿½ Meme API Integration', () => {
   let citizenUser, coordinatorUser, adminUser;
-  let citizenToken, coordinatorToken, adminToken;
+  let citizenHeaders, coordinatorHeaders, adminHeaders;
   let approvedIssue, draftIssue;
   let issueEntityTypeId;
 
   beforeAll(async () => {
-    citizenUser = await prisma.user.findFirst({ where: { role: 'citizen' } });
-    coordinatorUser = await prisma.user.findFirst({ where: { role: 'coordinator_area' } });
-    adminUser = await prisma.user.findFirst({ where: { role: 'admin' } });
+    const cit = await createTestUser({ role: 'citizen' });
+    citizenUser = cit.user;
+    citizenHeaders = cit.headers;
 
-    if (!citizenUser || !adminUser) {
-      throw new Error('Seed users not found. Run node backend/seed.js first.');
-    }
+    const coord = await createTestUser({ role: 'coordinator_area', assignedArea: 'Kothrud' });
+    coordinatorUser = coord.user;
+    coordinatorHeaders = coord.headers;
 
-    citizenToken = genToken(citizenUser);
-    coordinatorToken = coordinatorUser ? genToken(coordinatorUser) : null;
-    adminToken = genToken(adminUser);
+    const adm = await createTestUser({ role: 'admin' });
+    adminUser = adm.user;
+    adminHeaders = adm.headers;
 
     // Fetch an issue EntityType
     const et = await prisma.entityType.findFirst({ where: { name: { not: 'Civic Campaign' } } });
@@ -214,6 +182,7 @@ describe('Suite 3 — Meme API Integration', () => {
   });
 
   afterAll(async () => {
+    await cleanupAll();
     // Clean up test entities
     if (approvedIssue) {
       await prisma.parameterValue.deleteMany({ where: { entity_id: approvedIssue.entity_id } }).catch(() => {});
@@ -255,7 +224,7 @@ describe('Suite 3 — Meme API Integration', () => {
   test('3.2 Eligibility: draft issue is blocked', async () => {
     const res = await request(app)
       .get(`/meme/eligibility/${draftIssue.entity_id}`)
-      .set('Authorization', `Bearer ${citizenToken}`);
+      .set(citizenHeaders);
     expect(res.status).toBe(200);
     expect(res.body.data.eligible).toBe(false);
     expect(res.body.data.reason).toMatch(/verified|approved|publicly visible/i);
@@ -265,7 +234,7 @@ describe('Suite 3 — Meme API Integration', () => {
   test('3.3 Eligibility: approved issue is eligible', async () => {
     const res = await request(app)
       .get(`/meme/eligibility/${approvedIssue.entity_id}`)
-      .set('Authorization', `Bearer ${citizenToken}`);
+      .set(citizenHeaders);
     expect(res.status).toBe(200);
     expect(res.body.data.eligible).toBe(true);
     expect(Array.isArray(res.body.data.templateTypes)).toBe(true);
@@ -276,7 +245,7 @@ describe('Suite 3 — Meme API Integration', () => {
   test('3.4 Caption generation returns 3 AI options', async () => {
     const res = await request(app)
       .post('/meme/captions')
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({ issue_id: approvedIssue.entity_id, template_type: 'awareness' });
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -288,7 +257,7 @@ describe('Suite 3 — Meme API Integration', () => {
   test('3.5 Safety check: clean caption passes', async () => {
     const res = await request(app)
       .post('/meme/safety-check')
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({
         headline: 'Pothole near the park',
         caption: 'Visiting the same pothole daily. We have a routine. ???',
@@ -302,7 +271,7 @@ describe('Suite 3 — Meme API Integration', () => {
   test('3.6 Safety check: phone number in caption is blocked', async () => {
     const res = await request(app)
       .post('/meme/safety-check')
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({
         headline: 'Fix this',
         caption: 'Call 9876543210 to complain about this pothole',
@@ -318,7 +287,7 @@ describe('Suite 3 — Meme API Integration', () => {
   test('3.7 Safety check: political party name is blocked', async () => {
     const res = await request(app)
       .post('/meme/safety-check')
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({
         headline: 'Roads need BJP attention',
         caption: 'The BJP should fix this pothole, it has been here for months.',
@@ -332,7 +301,7 @@ describe('Suite 3 — Meme API Integration', () => {
   test('3.8 Campaign creation blocked without attestation', async () => {
     const res = await request(app)
       .post('/meme/campaigns')
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({
         issue_id: approvedIssue.entity_id,
         template_type: 'awareness',
@@ -349,7 +318,7 @@ describe('Suite 3 — Meme API Integration', () => {
   test('3.9 Campaign creation blocked for unapproved issue', async () => {
     const res = await request(app)
       .post('/meme/campaigns')
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({
         issue_id: draftIssue.entity_id,
         template_type: 'awareness',
@@ -367,7 +336,7 @@ describe('Suite 3 — Meme API Integration', () => {
     // Create
     const createRes = await request(app)
       .post('/meme/campaigns')
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({
         issue_id: approvedIssue.entity_id,
         template_type: 'awareness',
@@ -382,13 +351,13 @@ describe('Suite 3 — Meme API Integration', () => {
     // Submit
     const submitRes = await request(app)
       .post(`/meme/campaigns/${campaignId}/submit`)
-      .set('Authorization', `Bearer ${citizenToken}`);
+      .set(citizenHeaders);
     expect(submitRes.status).toBe(200);
 
     // Coordinator/Admin approves
     const approveRes = await request(app)
       .post(`/meme/campaigns/${campaignId}/transition`)
-      .set('Authorization', `Bearer ${adminToken}`)
+      .set(adminHeaders)
       .send({ to_status: 'approved' });
     expect(approveRes.status).toBe(200);
 
@@ -400,7 +369,7 @@ describe('Suite 3 — Meme API Integration', () => {
     // Publish
     const publishRes = await request(app)
       .post(`/meme/campaigns/${campaignId}/transition`)
-      .set('Authorization', `Bearer ${adminToken}`)
+      .set(adminHeaders)
       .send({ to_status: 'published' });
     expect(publishRes.status).toBe(200);
 
@@ -416,7 +385,7 @@ describe('Suite 3 — Meme API Integration', () => {
     // Create a campaign that is rejected
     const createRes = await request(app)
       .post('/meme/campaigns')
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({
         issue_id: approvedIssue.entity_id,
         template_type: 'awareness',
@@ -430,12 +399,12 @@ describe('Suite 3 — Meme API Integration', () => {
 
     await request(app)
       .post(`/meme/campaigns/${campaignId}/submit`)
-      .set('Authorization', `Bearer ${citizenToken}`);
+      .set(citizenHeaders);
 
     // Reject it
     await request(app)
       .post(`/meme/campaigns/${campaignId}/transition`)
-      .set('Authorization', `Bearer ${adminToken}`)
+      .set(adminHeaders)
       .send({ to_status: 'rejected', reason: 'Test rejection' });
 
     // Share link should return 410 with no meme content
@@ -450,7 +419,7 @@ describe('Suite 3 — Meme API Integration', () => {
   test('3.12 RBAC: citizen cannot access moderation transition endpoint', async () => {
     const res = await request(app)
       .post('/meme/campaigns/1/transition')
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({ to_status: 'approved' });
     expect(res.status).toBe(403);
   });
@@ -460,7 +429,7 @@ describe('Suite 3 — Meme API Integration', () => {
     // Create and publish a campaign
     const createRes = await request(app)
       .post('/meme/campaigns')
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({
         issue_id: approvedIssue.entity_id,
         template_type: 'awareness',
@@ -473,11 +442,11 @@ describe('Suite 3 — Meme API Integration', () => {
     const campaignId = createRes.body.data.campaign.entity_id;
 
     // Submit
-    await request(app).post(`/meme/campaigns/${campaignId}/submit`).set('Authorization', `Bearer ${citizenToken}`);
+    await request(app).post(`/meme/campaigns/${campaignId}/submit`).set(citizenHeaders);
     // Approve
-    await request(app).post(`/meme/campaigns/${campaignId}/transition`).set('Authorization', `Bearer ${adminToken}`).send({ to_status: 'approved' });
+    await request(app).post(`/meme/campaigns/${campaignId}/transition`).set(adminHeaders).send({ to_status: 'approved' });
     // Publish
-    await request(app).post(`/meme/campaigns/${campaignId}/transition`).set('Authorization', `Bearer ${adminToken}`).send({ to_status: 'published' });
+    await request(app).post(`/meme/campaigns/${campaignId}/transition`).set(adminHeaders).send({ to_status: 'published' });
 
     // Impact should be zero before any events
     const beforeRes = await request(app).get(`/meme/campaigns/${campaignId}/impact`);
@@ -485,13 +454,13 @@ describe('Suite 3 — Meme API Integration', () => {
     expect(beforeRes.body.data.views).toBe(0);
 
     // Record a view
-    await request(app).post(`/meme/campaigns/${campaignId}/event`).send({ event_type: 'view', session_id: 'test-session-xyz' });
+    await request(app).post(`/meme/campaigns/${campaignId}/event`).set('X-Requested-With', 'ck-web').send({ event_type: 'view', session_id: 'test-session-xyz' });
 
     const afterRes = await request(app).get(`/meme/campaigns/${campaignId}/impact`);
     expect(afterRes.body.data.views).toBe(1);
 
     // Second view with same session should be deduped
-    await request(app).post(`/meme/campaigns/${campaignId}/event`).send({ event_type: 'view', session_id: 'test-session-xyz' });
+    await request(app).post(`/meme/campaigns/${campaignId}/event`).set('X-Requested-With', 'ck-web').send({ event_type: 'view', session_id: 'test-session-xyz' });
     const afterDupRes = await request(app).get(`/meme/campaigns/${campaignId}/impact`);
     expect(afterDupRes.body.data.views).toBe(1);
   });
@@ -501,7 +470,7 @@ describe('Suite 3 — Meme API Integration', () => {
     // Create
     const createRes = await request(app)
       .post('/meme/campaigns')
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({
         issue_id: approvedIssue.entity_id,
         template_type: 'awareness',
@@ -514,9 +483,9 @@ describe('Suite 3 — Meme API Integration', () => {
     const campaignId = createRes.body.data.campaign.entity_id;
 
     // Publish it
-    await request(app).post(`/meme/campaigns/${campaignId}/submit`).set('Authorization', `Bearer ${citizenToken}`);
-    await request(app).post(`/meme/campaigns/${campaignId}/transition`).set('Authorization', `Bearer ${adminToken}`).send({ to_status: 'approved' });
-    await request(app).post(`/meme/campaigns/${campaignId}/transition`).set('Authorization', `Bearer ${adminToken}`).send({ to_status: 'published' });
+    await request(app).post(`/meme/campaigns/${campaignId}/submit`).set(citizenHeaders);
+    await request(app).post(`/meme/campaigns/${campaignId}/transition`).set(adminHeaders).send({ to_status: 'approved' });
+    await request(app).post(`/meme/campaigns/${campaignId}/transition`).set(adminHeaders).send({ to_status: 'published' });
 
     const feedRes = await request(app).get('/meme/feed');
     expect(feedRes.status).toBe(200);

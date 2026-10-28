@@ -114,7 +114,7 @@ function checkCategoryEligibility(category) {
 }
 
 // Helper: check eligibility and return { eligible, templateTypes, reason }
-async function checkEligibility(issueId, allowUnapproved = true) {
+async function checkEligibility(issueId, allowUnapproved = false) {
   const issue = await prisma.entity.findUnique({
     where: { entity_id: Number(issueId) },
     include: {
@@ -342,7 +342,7 @@ router.post('/campaigns', verifyToken, checkRole(['citizen']), async (req, res, 
 
     if (issue_id) {
       issueId = parsePositiveInt(issue_id, 'issue_id');
-      elig = await checkEligibility(issueId, true);
+      elig = await checkEligibility(issueId, false);
       if (!elig.eligible) return next(createError(elig.reason, 403));
       issue = elig.issue;
       campaignArea = issue?.area || campaignArea;

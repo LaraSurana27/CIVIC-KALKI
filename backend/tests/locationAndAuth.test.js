@@ -314,22 +314,218 @@ describe('Coordinate Validation on POST /entities', () => {
     expect(res.body.error).toMatch(/longitude/i);
   }, 15000);
 
-  test('valid coordinates accepted on POST /entities', async () => {
+  test('valid coordinates accepted on POST /entities (strictly expect 201)', async () => {
+    let type = await prisma.entityType.findFirst();
+    if (!type) {
+      type = await prisma.entityType.create({
+        data: { name: `${TAG} Type`, domain_id: 1, location_visibility: 'public_when_approved' }
+      });
+    }
+
     const res = await request(app)
       .post('/entities')
       .set('Cookie', citizenCookie)
       .set('X-Requested-With', 'ck-web')
-      .send({ entity_type_id: 1, name: `${TAG} valid-coords`, latitude: 28.6139, longitude: 77.2090 });
+      .send({ entity_type_id: type.entity_type_id, name: `${TAG} valid-coords`, latitude: 28.6139, longitude: 77.2090 });
 
-    // Either 201 or 400 due to entity_type_id=1 not necessarily existing in test DB
-    // We just assert it's not a coordinate error
-    if (res.statusCode === 400) {
-      expect(res.body.error).not.toMatch(/latitude|longitude/i);
-    } else {
-      expect(res.statusCode).toBe(201);
-      expect(res.body.data).toHaveProperty('entity_id');
+    expect(res.statusCode).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toHaveProperty('entity_id');
+    expect(res.body.data.latitude).toBe(28.6139);
+    expect(res.body.data.longitude).toBe(77.2090);
+  }, 20000);
+
+  test('DB-backed: full location visibility lifecycle across anonymous, owner, admin, nearby, approval and revocation', async () => {
+    // 1. Ensure a public_when_approved entity type exists
+    let publicType = await prisma.entityType.findFirst({
+      where: { location_visibility: 'public_when_approved' }
+    });
+    if (!publicType) {
+      let domain = await prisma.domain.findFirst();
+      if (!domain) {
+        domain = await prisma.domain.create({ data: { domain_name: `${TAG}-domain` } });
+      }
+      publicType = await prisma.entityType.create({
+        data: {
+          name: `${TAG}-PublicType`,
+          domain_id: domain.domain_id,
+          location_visibility: 'public_when_approved',
+        }
+      });
     }
-  }, 15000);
+
+    // 2. Owner (citizen) creates entity with lat/lng in draft status
+    const createRes = await request(app)
+      .post('/entities')
+      .set('Cookie', citizenCookie)
+      .set('X-Requested-With', 'ck-web')
+      .send({
+        entity_type_id: publicType.entity_type_id,
+        name: `${TAG} lifecycle-entity`,
+        location: 'Central Plaza',
+        latitude: 28.6139,
+        longitude: 77.2090,
+        status: 'draft',
+      });
+
+    expect(createRes.statusCode).toBe(201);
+    const entityId = createRes.body.data.entity_id;
+    expect(entityId).toBeDefined();
+
+    // 3. Anonymous GET has no latitude/longitude/location
+    const anonDraftRes = await request(app)
+      .get(`/entities/${entityId}`)
+      .set('X-Requested-With', 'ck-web');
+
+    expect(anonDraftRes.statusCode).toBe(200);
+    expect(anonDraftRes.body.data.latitude).toBeFalsy();
+    expect(anonDraftRes.body.data.longitude).toBeFalsy();
+    expect(anonDraftRes.body.data.location).toBeFalsy();
+    expect(anonDraftRes.body.data).not.toHaveProperty('latitude');
+    expect(anonDraftRes.body.data).not.toHaveProperty('longitude');
+    expect(anonDraftRes.body.data).not.toHaveProperty('location');
+
+    // 4. Owner sees coordinates and location
+    const ownerDraftRes = await request(app)
+      .get(`/entities/${entityId}`)
+      .set('Cookie', citizenCookie)
+      .set('X-Requested-With', 'ck-web');
+
+    expect(ownerDraftRes.statusCode).toBe(200);
+    expect(ownerDraftRes.body.data.latitude).toBe(28.6139);
+    expect(ownerDraftRes.body.data.longitude).toBe(77.2090);
+    expect(ownerDraftRes.body.data.location).toBe('Central Plaza');
+
+    // 5. Admin sees coordinates and location
+    const adminDraftRes = await request(app)
+      .get(`/entities/${entityId}`)
+      .set('Cookie', adminCookie)
+      .set('X-Requested-With', 'ck-web');
+
+    expect(adminDraftRes.statusCode).toBe(200);
+    expect(adminDraftRes.body.data.latitude).toBe(28.6139);
+    expect(adminDraftRes.body.data.longitude).toBe(77.2090);
+    expect(adminDraftRes.body.data.location).toBe('Central Plaza');
+
+    // Verify it does NOT appear in /entities/nearby while draft
+    const nearbyDraftRes = await request(app)
+      .get('/entities/nearby?lat=28.6139&lng=77.2090&radius_km=10')
+      .set('X-Requested-With', 'ck-web');
+
+    expect(nearbyDraftRes.statusCode).toBe(200);
+    const draftFound = nearbyDraftRes.body.data.some((e) => e.entity_id === entityId);
+    expect(draftFound).toBe(false);
+
+    // 6. Mark entity Approved
+    await prisma.entity.update({
+      where: { entity_id: entityId },
+      data: { status: 'Approved' },
+    });
+
+    // 7. Appears in /entities/nearby
+    const nearbyApprovedRes = await request(app)
+      .get('/entities/nearby?lat=28.6139&lng=77.2090&radius_km=10')
+      .set('X-Requested-With', 'ck-web');
+
+    expect(nearbyApprovedRes.statusCode).toBe(200);
+    const approvedItem = nearbyApprovedRes.body.data.find((e) => e.entity_id === entityId);
+    expect(approvedItem).toBeDefined();
+    expect(approvedItem.latitude).toBe(28.6139);
+    expect(approvedItem.longitude).toBe(77.2090);
+
+    // 8. Anonymous sees location on GET /entities/:id when approved
+    const anonApprovedRes = await request(app)
+      .get(`/entities/${entityId}`)
+      .set('X-Requested-With', 'ck-web');
+
+    expect(anonApprovedRes.statusCode).toBe(200);
+    expect(anonApprovedRes.body.data.latitude).toBe(28.6139);
+    expect(anonApprovedRes.body.data.longitude).toBe(77.2090);
+    expect(anonApprovedRes.body.data.location).toBe('Central Plaza');
+
+    // 9. Move back to non-approved (e.g. draft)
+    await prisma.entity.update({
+      where: { entity_id: entityId },
+      data: { status: 'draft' },
+    });
+
+    // 10. Hidden again from anonymous
+    const anonRevokedRes = await request(app)
+      .get(`/entities/${entityId}`)
+      .set('X-Requested-With', 'ck-web');
+
+    expect(anonRevokedRes.statusCode).toBe(200);
+    expect(anonRevokedRes.body.data.latitude).toBeFalsy();
+    expect(anonRevokedRes.body.data.longitude).toBeFalsy();
+    expect(anonRevokedRes.body.data.location).toBeFalsy();
+    expect(anonRevokedRes.body.data).not.toHaveProperty('latitude');
+    expect(anonRevokedRes.body.data).not.toHaveProperty('longitude');
+    expect(anonRevokedRes.body.data).not.toHaveProperty('location');
+
+    // 11. Hidden again from /entities/nearby
+    const nearbyRevokedRes = await request(app)
+      .get('/entities/nearby?lat=28.6139&lng=77.2090&radius_km=10')
+      .set('X-Requested-With', 'ck-web');
+
+    expect(nearbyRevokedRes.statusCode).toBe(200);
+    const revokedFound = nearbyRevokedRes.body.data.some((e) => e.entity_id === entityId);
+    expect(revokedFound).toBe(false);
+  }, 30000);
+
+  test('DB-backed: status "approved" in lowercase (real DB value) makes location public and appears in /entities/nearby', async () => {
+    // 1. Ensure a public_when_approved entity type exists
+    let publicType = await prisma.entityType.findFirst({
+      where: { location_visibility: 'public_when_approved' }
+    });
+    if (!publicType) {
+      let domain = await prisma.domain.findFirst();
+      if (!domain) {
+        domain = await prisma.domain.create({ data: { domain_name: `${TAG}-domain` } });
+      }
+      publicType = await prisma.entityType.create({
+        data: {
+          name: `${TAG}-PublicLower`,
+          domain_id: domain.domain_id,
+          location_visibility: 'public_when_approved',
+        }
+      });
+    }
+
+    // 2. Create entity directly with status "approved" in lowercase (the real DB value)
+    const entity = await prisma.entity.create({
+      data: {
+        entity_type_id: publicType.entity_type_id,
+        name: `${TAG} lowercase-approved-entity`,
+        location: 'Jantar Mantar',
+        latitude: 28.6271,
+        longitude: 77.2167,
+        status: 'approved', // Exact lowercase string
+      },
+    });
+
+    // 3. Anonymous GET /entities/:id can see location and coordinates
+    const anonRes = await request(app)
+      .get(`/entities/${entity.entity_id}`)
+      .set('X-Requested-With', 'ck-web');
+
+    expect(anonRes.statusCode).toBe(200);
+    expect(anonRes.body.success).toBe(true);
+    expect(anonRes.body.data.latitude).toBe(28.6271);
+    expect(anonRes.body.data.longitude).toBe(77.2167);
+    expect(anonRes.body.data.location).toBe('Jantar Mantar');
+
+    // 4. Appears in /entities/nearby search
+    const nearbyRes = await request(app)
+      .get('/entities/nearby?lat=28.6270&lng=77.2160&radius_km=5')
+      .set('X-Requested-With', 'ck-web');
+
+    expect(nearbyRes.statusCode).toBe(200);
+    expect(nearbyRes.body.success).toBe(true);
+    const found = nearbyRes.body.data.find((e) => e.entity_id === entity.entity_id);
+    expect(found).toBeDefined();
+    expect(found.latitude).toBe(28.6271);
+    expect(found.longitude).toBe(77.2167);
+  }, 30000);
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -704,6 +900,29 @@ describe('Location Visibility Comprehensive Matrix', () => {
       expect(canViewLocation(e, restrictedType, roles.admin)).toBe(true);
       expect(canViewLocation(e, restrictedType, roles.director)).toBe(true);
       expect(canViewLocation(e, restrictedType, roles.coordMatching)).toBe(true);
+    });
+  });
+
+  describe('Entity with hidden type (default location_visibility)', () => {
+    const hiddenType = { location_visibility: 'hidden' };
+
+    test('hidden + draft: anonymous no, citizen non-owner no, owner yes, admin yes, general coord yes, area coord (own) yes, area coord (other) no', () => {
+      const e = makeEntity('draft', 'North Zone', 10);
+      const eUnassigned = makeEntity('draft', 'Unassigned', 10);
+
+      expect(canViewLocation(e, hiddenType, roles.anonymous)).toBe(false);
+      expect(canViewLocation(e, hiddenType, roles.otherCitizen)).toBe(false);
+      expect(canViewLocation(e, hiddenType, roles.owner)).toBe(true);
+      expect(canViewLocation(e, hiddenType, roles.admin)).toBe(true);
+      expect(canViewLocation(e, hiddenType, roles.coordMatching)).toBe(true);
+      expect(canViewLocation(e, hiddenType, roles.coordOther)).toBe(false);
+      expect(canViewLocation(eUnassigned, hiddenType, roles.coordGeneralUnassigned)).toBe(true);
+    });
+
+    test('approved (lowercase) + public type -> public for everyone', () => {
+      const e = makeEntity('approved', 'North Zone', 10);
+      expect(canViewLocation(e, publicType, roles.anonymous)).toBe(true);
+      expect(canViewLocation(e, publicType, roles.otherCitizen)).toBe(true);
     });
   });
 

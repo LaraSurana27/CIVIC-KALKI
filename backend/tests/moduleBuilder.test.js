@@ -1,25 +1,10 @@
 const request = require('supertest');
 const app = require('../index');
 const prisma = require('../db');
-const jwt = require('jsonwebtoken');
-
-const JWT_SECRET = process.env.JWT_SECRET || 'development-secret-change-me';
-
-function generateTestToken(user) {
-  return jwt.sign(
-    {
-      user_id: user.user_id,
-      name: user.name,
-      role: user.role,
-      assigned_area: user.assignedArea || null,
-    },
-    JWT_SECRET,
-    { expiresIn: '1h' }
-  );
-}
+const { createTestUser, cleanupAll, trackEntityId } = require('./helpers/authHelper');
 
 describe('Phase 3A — No-Code Module Builder Metadata Generation Tests', () => {
-  let citizenToken, coordinatorAreaToken, directorToken, adminToken;
+  let citizenHeaders, coordinatorAreaHeaders, directorHeaders, adminHeaders;
   let citizenUser, coordinatorAreaUser, directorUser, adminUser;
   let grievanceEntityType;
 
@@ -31,22 +16,29 @@ describe('Phase 3A — No-Code Module Builder Metadata Generation Tests', () => 
   const uniqueModuleName = `Park Renovation Request ${Date.now()}`;
 
   beforeAll(async () => {
-    // 1. Fetch seed users
-    citizenUser = await prisma.user.findFirst({ where: { role: 'citizen' } });
-    coordinatorAreaUser = await prisma.user.findFirst({ where: { role: 'coordinator_area' } });
-    directorUser = await prisma.user.findFirst({ where: { role: 'director' } });
-    adminUser = await prisma.user.findFirst({ where: { role: 'admin' } });
+    // 1. Create ephemeral test users
+    const cit = await createTestUser({ role: 'citizen' });
+    citizenUser = cit.user;
+    citizenHeaders = cit.headers;
 
-    citizenToken = generateTestToken(citizenUser);
-    coordinatorAreaToken = generateTestToken(coordinatorAreaUser);
-    directorToken = generateTestToken(directorUser);
-    adminToken = generateTestToken(adminUser);
+    const coord = await createTestUser({ role: 'coordinator_area', assignedArea: 'Sector 5' });
+    coordinatorAreaUser = coord.user;
+    coordinatorAreaHeaders = coord.headers;
+
+    const dir = await createTestUser({ role: 'director' });
+    directorUser = dir.user;
+    directorHeaders = dir.headers;
+
+    const adm = await createTestUser({ role: 'admin' });
+    adminUser = adm.user;
+    adminHeaders = adm.headers;
 
     // 2. Fetch Grievance EntityType for automation rule testing
     grievanceEntityType = await prisma.entityType.findFirst({ where: { name: 'Grievance' } });
   });
 
   afterAll(async () => {
+    await cleanupAll();
     // Clean up created entities
     for (const entId of createdEntities) {
       await prisma.parameterValue.deleteMany({ where: { entity_id: entId } });
@@ -129,7 +121,7 @@ describe('Phase 3A — No-Code Module Builder Metadata Generation Tests', () => 
 
     const res = await request(app)
       .post('/module-builder/deploy')
-      .set('Authorization', `Bearer ${directorToken}`)
+      .set(directorHeaders)
       .send(payload);
 
     expect(res.status).toBe(201);
@@ -238,7 +230,7 @@ describe('Phase 3A — No-Code Module Builder Metadata Generation Tests', () => 
     // Create an entity of the new module type
     const createRes = await request(app)
       .post('/entities')
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({
         entity_type_id: deployedEntityTypeId,
         name: 'Shivaji Park Renovation',
@@ -260,7 +252,7 @@ describe('Phase 3A — No-Code Module Builder Metadata Generation Tests', () => 
 
     const valRes = await request(app)
       .put(`/entities/${testEntityId}/values`)
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({
         values: [
           { parameter_id: budgetParam.parameter_id, value: '50000' },
@@ -272,7 +264,7 @@ describe('Phase 3A — No-Code Module Builder Metadata Generation Tests', () => 
     // Retrieve entity parameter values via generic parameterValue engine
     const getRes = await request(app)
       .get(`/entities/${testEntityId}/values`)
-      .set('Authorization', `Bearer ${citizenToken}`);
+      .set(citizenHeaders);
 
     expect(getRes.status).toBe(200);
     expect(Array.isArray(getRes.body.data)).toBe(true);
@@ -286,7 +278,7 @@ describe('Phase 3A — No-Code Module Builder Metadata Generation Tests', () => 
     // Step 1: Citizen transitions draft -> submitted
     const step1 = await request(app)
       .post(`/entities/${testEntityId}/transition`)
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({ to_status: 'submitted' });
     expect(step1.status).toBe(200);
     expect(step1.body.data.status).toBe('submitted');
@@ -294,7 +286,7 @@ describe('Phase 3A — No-Code Module Builder Metadata Generation Tests', () => 
     // Step 2: Area Coordinator transitions submitted -> verified (Sector 5 matches coordinatorAreaUser.assignedArea)
     const step2 = await request(app)
       .post(`/entities/${testEntityId}/transition`)
-      .set('Authorization', `Bearer ${coordinatorAreaToken}`)
+      .set(coordinatorAreaHeaders)
       .send({ to_status: 'verified' });
     expect(step2.status).toBe(200);
     expect(step2.body.data.status).toBe('verified');
@@ -305,7 +297,7 @@ describe('Phase 3A — No-Code Module Builder Metadata Generation Tests', () => 
     // Step 3: Director transitions verified -> approved
     const step3 = await request(app)
       .post(`/entities/${testEntityId}/transition`)
-      .set('Authorization', `Bearer ${directorToken}`)
+      .set(directorHeaders)
       .send({ to_status: 'approved' });
 
     expect(step3.status).toBe(200);
@@ -341,7 +333,7 @@ describe('Phase 3A — No-Code Module Builder Metadata Generation Tests', () => 
     // Execute report via generic /reports/:id/execute
     const repRes = await request(app)
       .get(`/reports/${deployedReportId}/execute`)
-      .set('Authorization', `Bearer ${directorToken}`);
+      .set(directorHeaders);
 
     expect(repRes.status).toBe(200);
     expect(repRes.body.success).toBe(true);
@@ -372,7 +364,7 @@ describe('Phase 3A — No-Code Module Builder Metadata Generation Tests', () => 
 
     const res = await request(app)
       .post('/module-builder/deploy')
-      .set('Authorization', `Bearer ${directorToken}`)
+      .set(directorHeaders)
       .send(dupPayload);
 
     expect(res.status).toBe(400);
@@ -407,7 +399,7 @@ describe('Phase 3A — No-Code Module Builder Metadata Generation Tests', () => 
 
     const res = await request(app)
       .post('/module-builder/deploy')
-      .set('Authorization', `Bearer ${directorToken}`)
+      .set(directorHeaders)
       .send(invalidPayload);
 
     expect(res.status).toBe(400);
@@ -428,13 +420,14 @@ describe('Phase 3A — No-Code Module Builder Metadata Generation Tests', () => 
     // 1. Unauthenticated -> 401
     const resUnauth = await request(app)
       .post('/module-builder/deploy')
+      .set('X-Requested-With', 'ck-web')
       .send(payload);
     expect(resUnauth.status).toBe(401);
 
     // 2. Citizen role -> 403
     const resCitizen = await request(app)
       .post('/module-builder/deploy')
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send(payload);
     expect(resCitizen.status).toBe(403);
   });
