@@ -109,24 +109,6 @@ const handleExecute = async (req, res, next) => {
       overrideFilters,
     });
 
-    const requestedFormat = (req.query.format || req.query.export || '').toLowerCase();
-    if (requestedFormat === 'csv') {
-      const columns = result.columns || [];
-      const header = columns.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',');
-      const lines = (result.rows || []).map((r) => {
-        return columns
-          .map((c) => {
-            const val = r[c] !== undefined && r[c] !== null ? String(r[c]) : '';
-            return `"${val.replace(/"/g, '""')}"`;
-          })
-          .join(',');
-      });
-      const csvContent = [header, ...lines].join('\n');
-      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="${result.reportName.replace(/[^a-z0-9]/gi, '_')}.csv"`);
-      return res.status(200).send(csvContent);
-    }
-
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
     return next(err);

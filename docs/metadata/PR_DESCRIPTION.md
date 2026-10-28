@@ -20,7 +20,7 @@ This PR operationalizes the IEEE metadata-hierarchy research (*Offenhuber 2019*,
 
 ## 2. Hierarchy Implementation
 
-The IEEE 14-level civic metadata hierarchy was realized through the existing CIVIC-KALKI engine, augmented with minimal generic extensions:
+The CIVIC-KALKI 10-level metadata hierarchy was realized through the existing CIVIC-KALKI engine, augmented with minimal generic extensions:
 
 ```text
 Domain ("Civic Events")

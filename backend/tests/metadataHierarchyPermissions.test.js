@@ -522,37 +522,46 @@ describe('CIVIC-KALKI — Metadata-Hierarchy & Permission Capabilities Engine', 
   // TEST GROUP 6: Hard Constraint Guardrail Check
   // ───────────────────────────────────────────────────────────────────────────
   describe('6. Architectural Guardrail Test: Zero Specific Logic in Codebase', () => {
-    test('scans backend/services, backend/routes, and frontend/src for /ganpati/i and fails if found', () => {
-      const directoriesToScan = [
+    test('scans backend routes, services, middleware, prisma, index.js, and frontend/src for /ganpati/i and fails if found', () => {
+      const itemsToScan = [
         path.join(__dirname, '..', 'services'),
         path.join(__dirname, '..', 'routes'),
         path.join(__dirname, '..', 'middleware'),
+        path.join(__dirname, '..', 'prisma'),
+        path.join(__dirname, '..', 'src'),
         path.join(__dirname, '..', '..', 'frontend', 'src'),
+        path.join(__dirname, '..', 'index.js'),
       ];
 
       const disallowedRegex = /ganpati/i;
       const offendingFiles = [];
+      let scannedFileCount = 0;
 
-      function scanDir(dir) {
-        if (!fs.existsSync(dir)) return;
-        const entries = fs.readdirSync(dir, { withFileTypes: true });
-        for (const entry of entries) {
-          const fullPath = path.join(dir, entry.name);
-          if (entry.isDirectory()) {
-            scanDir(fullPath);
-          } else if (/\.(js|jsx|ts|tsx|html|css)$/.test(entry.name)) {
-            const content = fs.readFileSync(fullPath, 'utf8');
+      function scanItem(itemPath) {
+        if (!fs.existsSync(itemPath)) return;
+        const stat = fs.statSync(itemPath);
+        if (stat.isFile()) {
+          if (/\.(js|jsx|ts|tsx|html|css|prisma|sql)$/.test(itemPath)) {
+            scannedFileCount++;
+            const content = fs.readFileSync(itemPath, 'utf8');
             if (disallowedRegex.test(content)) {
-              offendingFiles.push(fullPath);
+              offendingFiles.push(itemPath);
             }
+          }
+        } else if (stat.isDirectory()) {
+          const entries = fs.readdirSync(itemPath, { withFileTypes: true });
+          for (const entry of entries) {
+            scanItem(path.join(itemPath, entry.name));
           }
         }
       }
 
-      for (const dir of directoriesToScan) {
-        scanDir(dir);
+      for (const item of itemsToScan) {
+        scanItem(item);
       }
 
+      // Assert that files were actually discovered and scanned (not empty)
+      expect(scannedFileCount).toBeGreaterThan(25);
       expect(offendingFiles).toEqual([]);
     });
   });
