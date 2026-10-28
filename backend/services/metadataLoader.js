@@ -428,7 +428,7 @@ async function seedMetadata({ dryRun = false } = {}) {
         reportsCount: totalReports,
         status: 'SEEDED_SUCCESSFULLY',
       };
-    });
+    }, { maxWait: 15000, timeout: 30000 });
 
     results.push(seeded);
   }

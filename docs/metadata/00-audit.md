@@ -3,7 +3,7 @@
 **Author:** Platform / Core Architecture Team  
 **Branch:** `feat/civic-metadata-permissions`  
 **Date:** October 2026  
-**Context:** Verification of existing CIVIC-KALKI codebase against the 10-level metadata-hierarchy architecture (Domain → Category → Entity Type → Entity Instance → Form → Sections → Parameters → Workflow → Rules → Reports).
+**Context:** Verification of existing CIVIC-KALKI codebase against the assigned 10-level metadata-hierarchy architecture (Domain → Civic Events → Entity Type → (Ganpati Event Permission) → Form → Sections → Parameters → Workflow → Rules → Reports).
 
 ---
 

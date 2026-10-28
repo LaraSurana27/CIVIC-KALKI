@@ -8,7 +8,7 @@
 
 ## 1. Summary of Changes
 
-This PR operationalizes the 10-level metadata-hierarchy architecture (theoretically grounded in municipal datafication and workflow orchestration research by *Offenhuber 2019*, *Janssen et al. 2022*) into the CIVIC-KALKI platform by configuring two comprehensive civic capabilities **purely as declarative metadata**:
+This PR operationalizes the assigned 10-level metadata-hierarchy research (`Domain → Civic Events → Entity Type → (Ganpati Event Permission) → Form → Sections → Parameters → Workflow → Rules → Reports`) into the CIVIC-KALKI platform by configuring two comprehensive civic capabilities **purely as declarative metadata**:
 1. **Ganpati Event Permission** (`civic_events.ganpati_event_permission.json`)
 2. **Resource Request** (`civic_events.resource_request.json`)
 
@@ -49,12 +49,19 @@ Domain ("Civic Events")
    - Decouples reviewing authorities into data records (`_shared/authorities.json`).
    - Automatically determines required authorities on submission/edits.
    - Durably records **WHY** each authority was required (`rule_id` + matched inputs snapshot) for full civic auditability.
-4. **Additive Review Task Table (`model EntityReviewTask` in Prisma)**:
-   - 100% additive schema addition. No existing columns or tables were dropped or renamed.
-   - Tracks parallel department reviews (`status`, `required_reason`, `decision_reason`, `due_date`, `completed_at`).
+   - **Zero-impact on existing modules:** `evaluateAndReconcileReviewTasks` short-circuits immediately with zero DB writes or task creation for entity types without `rules.authority_routing` metadata.
+4. **Additive Review Task Table & Schema Sync (`schema.prisma`)**:
+   - Added `model EntityReviewTask` to track parallel department reviews (`status`, `required_reason`, `matched_inputs`, `decision_reason`, `due_date`, `completed_at`).
+   - Added `location_visibility String?` to `model EntityType`: The live Supabase database already had this column added out-of-band; adding it to `schema.prisma` aligns code with live DB and prevents `prisma db push` from attempting to drop it.
+   - **Migration Notice for Database Lead (Lara):** The shared Supabase DB already has `EntityReviewTask` and `location_visibility`. **Do NOT run `npx prisma migrate dev` directly against the shared database**, as Prisma will detect drift between the database and `prisma/migrations/` and prompt to reset the database. Recommended approach: write the migration SQL or generate on a shadow DB, then record it as applied via `npx prisma migrate resolve --applied <migration_name>`.
 5. **Multi-Department Review Aggregation Evaluator (`services/workflowEngine.js`)**:
    - Evaluates department determinations under configurable policies (`all_must_approve`, `any_rejects`, `any_request_changes`).
-   - Prevents premature approvals while department reviews remain pending.
+   - When an entity has no review tasks (e.g. existing baseline modules), `evaluateReviewAggregationPolicy` immediately returns `canApprove: true`.
+6. **Generic Review Task Endpoints in `routes/entity.js` (+60 lines)**:
+   - `GET /entities/:id/review-tasks`: Returns review task statuses and the "why required" audit trail.
+   - `POST /entities/:id/review-tasks/:taskId/review`: Submits department determinations (`approved`, `request_changes`, `rejected`).
+   - `POST /entities/:id/reconcile-authorities`: Manually re-evaluates requirement rules if applicant updates parameters.
+
 
 ---
 

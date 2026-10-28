@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, 'feat/**']
+    branches: [main]
   pull_request:
     branches: [main]
 
@@ -23,7 +23,7 @@ jobs:
         run: npm install --no-audit
 
       - name: Secret Scan Hook
-        run: node scripts/secret-scan.js || true
+        run: node scripts/secret-scan.js
 
       - name: Install backend dependencies
         run: |

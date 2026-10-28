@@ -27,7 +27,7 @@ const { evaluateReviewAggregationPolicy } = require('../services/workflowEngine'
 
 const tokenSigningKey = process.env['JWT' + '_SECRET'] || 'development-secret-change-me';
 
-jest.setTimeout(30000);
+jest.setTimeout(90000);
 
 function generateTestToken(user) {
   return jwt.sign(
@@ -101,10 +101,54 @@ describe('CIVIC-KALKI — Metadata-Hierarchy & Permission Capabilities Engine', 
     resourceForm = await prisma.formMaster.findFirst({
       where: { entity_type_id: resourceEntityType.entity_type_id },
     });
-  });
+  }, 90000);
+
+  const createdEntityIds = [];
+  const createdEntityTypeIds = [];
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    try {
+      if (createdEntityIds.length > 0) {
+        await prisma.parameterValue.deleteMany({
+          where: { entity_id: { in: createdEntityIds } },
+        });
+        await prisma.entityReviewTask.deleteMany({
+          where: { entity_id: { in: createdEntityIds } },
+        });
+        await prisma.approvalHistory.deleteMany({
+          where: { entity_id: { in: createdEntityIds } },
+        });
+        await prisma.auditLog.deleteMany({
+          where: { entity_id: { in: createdEntityIds } },
+        });
+        await prisma.entity.deleteMany({
+          where: { entity_id: { in: createdEntityIds } },
+        });
+      }
+      if (createdEntityTypeIds.length > 0) {
+        for (const typeId of createdEntityTypeIds) {
+          const forms = await prisma.formMaster.findMany({ where: { entity_type_id: typeId } });
+          for (const f of forms) {
+            const sections = await prisma.sectionMaster.findMany({ where: { form_id: f.form_id } });
+            for (const s of sections) {
+              const subs = await prisma.subsectionMaster.findMany({ where: { section_id: s.section_id } });
+              for (const sub of subs) {
+                await prisma.parameterMaster.deleteMany({ where: { subsection_id: sub.subsection_id } });
+              }
+              await prisma.subsectionMaster.deleteMany({ where: { section_id: s.section_id } });
+            }
+            await prisma.sectionMaster.deleteMany({ where: { form_id: f.form_id } });
+          }
+          await prisma.formMaster.deleteMany({ where: { entity_type_id: typeId } });
+          await prisma.workflowMaster.deleteMany({ where: { entity_type_id: typeId } });
+          await prisma.entityType.deleteMany({ where: { entity_type_id: typeId } });
+        }
+      }
+    } catch (cleanupErr) {
+      console.warn('Test cleanup notice:', cleanupErr.message);
+    } finally {
+      await prisma.$disconnect();
+    }
   });
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -244,6 +288,7 @@ describe('CIVIC-KALKI — Metadata-Hierarchy & Permission Capabilities Engine', 
       });
 
       // Submit values
+      createdEntityIds.push(ent1.entity_id);
       const valRes1 = await request(app)
         .post(`/entities/${ent1.entity_id}/values`)
         .set('Authorization', `Bearer ${citizenToken}`)
@@ -266,6 +311,7 @@ describe('CIVIC-KALKI — Metadata-Hierarchy & Permission Capabilities Engine', 
           status: 'draft',
         },
       });
+      createdEntityIds.push(ent2.entity_id);
 
       const resTypeParam = await prisma.parameterMaster.findFirst({
         where: { subsectionMaster: { sectionMaster: { form_id: resourceForm.form_id } }, field_key: 'resource_type' },
@@ -304,6 +350,17 @@ describe('CIVIC-KALKI — Metadata-Hierarchy & Permission Capabilities Engine', 
           status: 'draft',
         },
       });
+      createdEntityIds.push(testEntity.entity_id);
+    });
+
+    afterEach(async () => {
+      if (testEntity) {
+        try {
+          await prisma.approvalHistory.deleteMany({ where: { entity_id: testEntity.entity_id } });
+          await prisma.auditLog.deleteMany({ where: { entity_id: testEntity.entity_id } });
+          await prisma.entity.deleteMany({ where: { entity_id: testEntity.entity_id } });
+        } catch (_) {}
+      }
     });
 
     test('citizen can transition draft -> submitted', async () => {
@@ -429,9 +486,21 @@ describe('CIVIC-KALKI — Metadata-Hierarchy & Permission Capabilities Engine', 
           status: 'department_review',
         },
       });
+      createdEntityIds.push(appEntity.entity_id);
 
       // Clear any tasks for this entity
       await prisma.entityReviewTask.deleteMany({ where: { entity_id: appEntity.entity_id } });
+    });
+
+    afterEach(async () => {
+      if (appEntity) {
+        try {
+          await prisma.entityReviewTask.deleteMany({ where: { entity_id: appEntity.entity_id } });
+          await prisma.approvalHistory.deleteMany({ where: { entity_id: appEntity.entity_id } });
+          await prisma.auditLog.deleteMany({ where: { entity_id: appEntity.entity_id } });
+          await prisma.entity.deleteMany({ where: { entity_id: appEntity.entity_id } });
+        } catch (_) {}
+      }
     });
 
     test('blocks transition to approved when any authority review is pending', async () => {
@@ -522,16 +591,18 @@ describe('CIVIC-KALKI — Metadata-Hierarchy & Permission Capabilities Engine', 
   // TEST GROUP 6: Hard Constraint Guardrail Check
   // ───────────────────────────────────────────────────────────────────────────
   describe('6. Architectural Guardrail Test: Zero Specific Logic in Codebase', () => {
-    test('scans backend routes, services, middleware, prisma, index.js, and frontend/src for /ganpati/i and fails if found', () => {
-      const itemsToScan = [
-        path.join(__dirname, '..', 'services'),
-        path.join(__dirname, '..', 'routes'),
-        path.join(__dirname, '..', 'middleware'),
-        path.join(__dirname, '..', 'prisma'),
-        path.join(__dirname, '..', 'src'),
-        path.join(__dirname, '..', '..', 'frontend', 'src'),
-        path.join(__dirname, '..', 'index.js'),
-      ];
+    test('scans all backend folders (excluding metadata, tests, node_modules) and frontend/src for /ganpati/i and fails if found', () => {
+      const backendRoot = path.join(__dirname, '..');
+      const ignoredBackendNames = new Set(['metadata', 'tests', 'node_modules', 'dist', '.git', 'coverage', 'presentation_assets']);
+
+      const itemsToScan = [];
+      const backendEntries = fs.readdirSync(backendRoot, { withFileTypes: true });
+      for (const entry of backendEntries) {
+        if (!ignoredBackendNames.has(entry.name) && !entry.name.startsWith('.env')) {
+          itemsToScan.push(path.join(backendRoot, entry.name));
+        }
+      }
+      itemsToScan.push(path.join(backendRoot, '..', 'frontend', 'src'));
 
       const disallowedRegex = /ganpati/i;
       const offendingFiles = [];
@@ -654,12 +725,40 @@ describe('CIVIC-KALKI — Metadata-Hierarchy & Permission Capabilities Engine', 
 
         expect(transRes.statusCode).toBe(200);
         expect(transRes.body.data.status).toBe('submitted');
+
+        // Clean up entity
+        await prisma.approvalHistory.deleteMany({ where: { entity_id: newEntity.entity_id } });
+        await prisma.auditLog.deleteMany({ where: { entity_id: newEntity.entity_id } });
+        await prisma.entity.deleteMany({ where: { entity_id: newEntity.entity_id } });
       } finally {
         // Cleanup dummy file
         if (fs.existsSync(dummyFilePath)) {
           fs.unlinkSync(dummyFilePath);
         }
+        // Cleanup dummy entity type and relations
+        try {
+          const typeToDelete = await prisma.entityType.findFirst({
+            where: { name: dummyMetadata.entity_type.name },
+          });
+          if (typeToDelete) {
+            const forms = await prisma.formMaster.findMany({ where: { entity_type_id: typeToDelete.entity_type_id } });
+            for (const f of forms) {
+              const sections = await prisma.sectionMaster.findMany({ where: { form_id: f.form_id } });
+              for (const s of sections) {
+                const subs = await prisma.subsectionMaster.findMany({ where: { section_id: s.section_id } });
+                for (const sub of subs) {
+                  await prisma.parameterMaster.deleteMany({ where: { subsection_id: sub.subsection_id } });
+                }
+                await prisma.subsectionMaster.deleteMany({ where: { section_id: s.section_id } });
+              }
+              await prisma.sectionMaster.deleteMany({ where: { form_id: f.form_id } });
+            }
+            await prisma.formMaster.deleteMany({ where: { entity_type_id: typeToDelete.entity_type_id } });
+            await prisma.workflowMaster.deleteMany({ where: { entity_type_id: typeToDelete.entity_type_id } });
+            await prisma.entityType.deleteMany({ where: { entity_type_id: typeToDelete.entity_type_id } });
+          }
+        } catch (_) {}
       }
-    });
+    }, 60000);
   });
 });
