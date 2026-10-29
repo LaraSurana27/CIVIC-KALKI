@@ -80,7 +80,7 @@ export function isAuthenticated() {
 // `data` is the { user, expires_at } object returned by the server.
 export function setUserFromResponse(data) {
   if (!data) return;
-  _user = data.user || null;
+  _user = data.user || (data.user_id ? data : null);
   _expiresAt = data.expires_at || null;
   _scheduleExpiry();
 }
@@ -135,7 +135,9 @@ export function roleLabel(role) {
 export const ROLES = ['citizen', 'coordinator_area', 'coordinator_general', 'director', 'admin'];
 
 // ── Backwards-compat stubs — kept so existing callers don't break ─────────
-// setAuth and getAuth are no-ops: the server owns the cookie.
-export function setAuth() {}
+// setAuth hydrates in-memory cache from response or user object
+export function setAuth(data) {
+  setUserFromResponse(data);
+}
 export function getAuth() { return _user ? { user: _user } : null; }
 export function getToken() { return null; } // token is httpOnly — never accessible

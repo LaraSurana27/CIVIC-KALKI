@@ -1,12 +1,28 @@
 import { auth } from '../api.js';
-import { setAuth, isAuthenticated } from '../auth.js';
+import { setUserFromResponse, setAuth, isAuthenticated } from '../auth.js';
 import { navigate } from '../router.js';
 import { toastError } from '../components/toast.js';
 import { renderLanguageSelector, attachLanguageSelectorEvents } from '../components/languageSelector.js';
 
-export function renderSignup() {
+function getSafeRedirect(searchParams, fallback = '/dashboard') {
+  const raw = searchParams && searchParams.get('redirect');
+  if (
+    typeof raw === 'string' &&
+    raw.startsWith('/') &&
+    !raw.startsWith('//') &&
+    !raw.startsWith('/\\') &&
+    !raw.includes('://') &&
+    !raw.toLowerCase().includes('javascript:') &&
+    !/[\x00-\x1F\x7F]/.test(raw)
+  ) {
+    return raw;
+  }
+  return fallback;
+}
+
+export function renderSignup(params, searchParams) {
   if (isAuthenticated()) {
-    navigate('/dashboard');
+    navigate(getSafeRedirect(searchParams));
     return;
   }
 
@@ -75,8 +91,8 @@ export function renderSignup() {
 
     try {
       const res = await auth.signup(name, email, password);
-      setAuth({ token: res.data.token, user: res.data.user });
-      navigate('/dashboard');
+      setUserFromResponse(res.data);
+      navigate(getSafeRedirect(searchParams));
     } catch (err) {
       toastError(err.message || 'Signup failed');
       btn.disabled = false;
