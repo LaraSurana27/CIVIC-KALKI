@@ -347,7 +347,10 @@ router.get('/', async (req, res, next) => {
       where.area = String(req.query.area).trim();
     }
 
-    if (req.query.owner_user_id !== undefined) {
+    // Citizens can strictly only view entities initiated by themselves
+    if (req.user && req.user.role === 'citizen') {
+      where.owner_user_id = Number(req.user.user_id);
+    } else if (req.query.owner_user_id !== undefined) {
       where.owner_user_id = parsePositiveInt(req.query.owner_user_id, 'owner_user_id');
     }
 
