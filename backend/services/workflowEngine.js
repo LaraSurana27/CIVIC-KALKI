@@ -2,16 +2,18 @@
  * CIVIC-KALKI — Generic Workflow Engine Service
  *
  * Provides metadata-driven workflow evaluation and transition execution
- * using the WorkflowMaster table (entity_type_id, trigger, action, stage).
+ * using the WorkflowMaster table (entity_type_id, trigger, action, stage)
+ * and declarative state machine configurations.
  *
  * Mapping:
- * - trigger: starting state (e.g. "draft", "submitted", "coordinator_approved")
- * - action: target state (e.g. "submitted", "coordinator_approved", "approved", "rejected")
+ * - trigger: starting state (e.g. "draft", "submitted", "coordinator_verification", "department_review")
+ * - action: target state (e.g. "submitted", "coordinator_verification", "department_review", "approved", "rejected", "request_changes")
  * - stage: allowed role (e.g. "citizen", "coordinator_area", "coordinator_general", "director", "admin")
  */
 
 const prisma = require('../db');
 const { checkAndFireRules } = require('./ruleEngine');
+const { evaluateAndReconcileReviewTasks } = require('./authorityRoutingEngine');
 
 function createHttpError(message, statusCode) {
   const err = new Error(message);
@@ -27,6 +29,80 @@ async function getWorkflowMasterRules(entityTypeId) {
     where: { entity_type_id: Number(entityTypeId) },
     orderBy: { workflow_id: 'asc' },
   });
+}
+
+/**
+ * Generic Review Aggregation Policy Evaluator (Phase 3).
+ *
+ * Aggregates parallel authority review determinations for an entity:
+ * - default: 'all_must_approve'
+ * - any reject -> Rejected
+ * - any request_changes -> Request Changes (once all non-rejected reviews respond)
+ * - all approve -> Approved
+ */
+async function evaluateReviewAggregationPolicy(entityId, policy = 'all_must_approve') {
+  const tasks = await prisma.entityReviewTask.findMany({
+    where: {
+      entity_id: Number(entityId),
+      status: { not: 'voided' },
+    },
+  });
+
+  if (tasks.length === 0) {
+    return {
+      canApprove: true,
+      canReject: true,
+      canRequestChanges: true,
+      totalCount: 0,
+      pendingCount: 0,
+      approvedCount: 0,
+      rejectedCount: 0,
+      requestChangesCount: 0,
+      pendingAuthorities: [],
+      reason: null,
+    };
+  }
+
+  const pending = tasks.filter((t) => t.status === 'pending');
+  const rejected = tasks.filter((t) => t.status === 'rejected');
+  const requestChanges = tasks.filter((t) => t.status === 'request_changes');
+  const approved = tasks.filter((t) => t.status === 'approved');
+
+  const pendingAuthorities = pending.map((t) => t.authority_key);
+
+  // Rejection is immediate if any authority rejects
+  const canReject = rejected.length > 0;
+
+  // Request changes is valid when all authorities have responded and at least one asked for changes
+  const canRequestChanges = pending.length === 0 && requestChanges.length > 0 && rejected.length === 0;
+
+  // Approval requires 100% of required authorities to approve under all_must_approve policy
+  const canApprove =
+    policy === 'all_must_approve'
+      ? pending.length === 0 && rejected.length === 0 && requestChanges.length === 0 && approved.length === tasks.length
+      : approved.length > 0 && rejected.length === 0;
+
+  let reason = null;
+  if (pending.length > 0) {
+    reason = `Pending department review(s) remaining: ${pendingAuthorities.join(', ')}.`;
+  } else if (rejected.length > 0) {
+    reason = `Rejected by reviewing department(s): ${rejected.map((t) => t.authority_key).join(', ')}.`;
+  } else if (requestChanges.length > 0) {
+    reason = `Changes requested by reviewing department(s): ${requestChanges.map((t) => t.authority_key).join(', ')}.`;
+  }
+
+  return {
+    canApprove,
+    canReject,
+    canRequestChanges,
+    totalCount: tasks.length,
+    pendingCount: pending.length,
+    approvedCount: approved.length,
+    rejectedCount: rejected.length,
+    requestChangesCount: requestChanges.length,
+    pendingAuthorities,
+    reason,
+  };
 }
 
 /**
@@ -59,10 +135,12 @@ async function validateWorkflowTransition({
       const trig = String(r.trigger || '').trim().toLowerCase();
       const act = String(r.action || '').trim().toLowerCase();
       const stg = String(r.stage || '').trim().toLowerCase();
-      
+
       const triggerMatches = trig === currentStatus;
       const actionMatches = act === normalizedTarget;
-      const roleMatches = stg === actorRole.toLowerCase() || stg.split(',').map(s => s.trim()).includes(actorRole.toLowerCase());
+      const roleMatches =
+        stg === actorRole.toLowerCase() ||
+        stg.split(',').map((s) => s.trim().toLowerCase()).includes(actorRole.toLowerCase());
 
       return triggerMatches && actionMatches && roleMatches;
     });
@@ -90,6 +168,20 @@ async function validateWorkflowTransition({
       const entityArea = String(entity.area || '').trim();
       if (entityArea && entityArea !== 'Unassigned') {
         return { allowed: false, reason: 'General Coordinator can only handle entities in unassigned areas.', source: 'metadata' };
+      }
+    }
+
+    // Multi-Department Review Aggregation Constraint
+    if (currentStatus === 'department_review') {
+      const agg = await evaluateReviewAggregationPolicy(entity.entity_id);
+
+      if (normalizedTarget === 'approved' && !agg.canApprove) {
+        return {
+          allowed: false,
+          reason: agg.reason || 'Cannot approve: not all required department reviews have been approved.',
+          source: 'aggregation_policy',
+          aggregation: agg,
+        };
       }
     }
 
@@ -210,6 +302,16 @@ async function executeWorkflowTransition({
     return { updatedEntity: updated };
   });
 
+  // Evaluate authority routing and reconcile review tasks on submit / department review
+  let routingResult = null;
+  if (['submitted', 'coordinator_verification', 'department_review', 'draft'].includes(normalizedToStatus)) {
+    try {
+      routingResult = await evaluateAndReconcileReviewTasks(parsedId);
+    } catch (routeErr) {
+      console.warn(`[WORKFLOW ENGINE] Routing reconciliation note for #${parsedId}:`, routeErr.message);
+    }
+  }
+
   // Trigger cascading Rule Engine if state is approved
   let ruleResult = null;
   if (normalizedToStatus === 'approved') {
@@ -225,6 +327,7 @@ async function executeWorkflowTransition({
     previousStatus,
     newStatus: normalizedToStatus,
     workflowSource: validation.source,
+    routingResult,
     ruleResult,
   };
 }
@@ -233,4 +336,5 @@ module.exports = {
   getWorkflowMasterRules,
   validateWorkflowTransition,
   executeWorkflowTransition,
+  evaluateReviewAggregationPolicy,
 };

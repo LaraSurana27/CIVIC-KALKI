@@ -1,0 +1,10 @@
+{
+  "version": "1.0",
+  "verified": false,
+  "verification_note": "Thresholds are placeholder numbers for demonstration and testing purposes.",
+  "thresholds": {
+    "crowd_threshold": 500,
+    "fire_threshold": 1000,
+    "night_curfew_time": "22:00"
+  }
+}

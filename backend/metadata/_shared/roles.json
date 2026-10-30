@@ -1,0 +1,43 @@
+{
+  "$schema": "./schema/roles.schema.json",
+  "version": "1.0",
+  "description": "Role-to-stage access control mappings for workflow transitions without altering auth tables",
+  "roles": [
+    {
+      "role": "citizen",
+      "display_name": "Citizen / Applicant / Organizer",
+      "can_create": true,
+      "can_submit": true,
+      "scope": "own_entities"
+    },
+    {
+      "role": "coordinator_area",
+      "display_name": "Area Coordinator",
+      "can_verify": true,
+      "can_request_changes": true,
+      "scope": "assigned_area"
+    },
+    {
+      "role": "coordinator_general",
+      "display_name": "General Coordinator",
+      "can_verify": true,
+      "can_request_changes": true,
+      "scope": "unassigned_area"
+    },
+    {
+      "role": "director",
+      "display_name": "Department Director / Head of Department",
+      "can_review_department": true,
+      "can_approve": true,
+      "can_reject": true,
+      "scope": "global"
+    },
+    {
+      "role": "admin",
+      "display_name": "System Administrator",
+      "can_manage_metadata": true,
+      "can_override_workflow": true,
+      "scope": "global"
+    }
+  ]
+}

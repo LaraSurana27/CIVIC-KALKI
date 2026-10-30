@@ -1,0 +1,267 @@
+{
+  "$schema": "./schema/entity_type.schema.json",
+  "domain": {
+    "key": "civic_events",
+    "name": "Civic Events",
+    "description": "Public community festivals, cultural celebrations, civic gatherings, and event logistics."
+  },
+  "entity_type": {
+    "key": "resource_request",
+    "name": "Resource Request",
+    "description": "Logistics and municipal service requisition for public events (water, sanitation, safety barriers, power, medical).",
+    "version": "1.0",
+    "verified": false,
+    "verification_note": "Resource request catalogue, department allocations, and SLAs are placeholder configurations pending confirmation with PMC Central Stores."
+  },
+  "form": {
+    "name": "Civic Event Resource Requisition Form",
+    "sections": [
+      {
+        "key": "resource_details",
+        "name": "Resource Details",
+        "display_order": 1,
+        "subsections": [
+          {
+            "name": "Requisition Specifications",
+            "parameters": [
+              {
+                "field_key": "resource_type",
+                "label": "Requested Municipal Resource Type",
+                "field_type": "enum",
+                "control_type": "dropdown",
+                "mandatory": true,
+                "options": {
+                  "choices": [
+                    { "value": "barricades", "label": "Crowd Control Steel Barricades (units)" },
+                    { "value": "water_tanker", "label": "Potable Water Tanker (10,000L tanker)" },
+                    { "value": "portable_toilets", "label": "Mobile / Portable Sanitation Units" },
+                    { "value": "ambulance", "label": "Dedicated Cardiac / Basic Life Support Ambulance" },
+                    { "value": "extra_lighting", "label": "High-Mast Flood Lighting & Generator Backup" },
+                    { "value": "police_personnel", "label": "Auxiliary Police / Home Guard Deployment" }
+                  ]
+                },
+                "validation_rule": "required",
+                "help_text": "Select the core logistics asset required from municipal or police stores."
+              },
+              {
+                "field_key": "quantity",
+                "label": "Quantity / Units Required",
+                "field_type": "number",
+                "control_type": "input",
+                "mandatory": true,
+                "validation_rule": "required|integer|min:1",
+                "help_text": "Specify the exact count or units requested."
+              },
+              {
+                "field_key": "priority",
+                "label": "Requisition Priority",
+                "field_type": "enum",
+                "control_type": "dropdown",
+                "mandatory": true,
+                "options": {
+                  "choices": [
+                    { "value": "low", "label": "Low — Advance planned reservation (> 14 days)" },
+                    { "value": "medium", "label": "Medium — Standard festival requirement (7-14 days)" },
+                    { "value": "high", "label": "High — Urgent crowd surges expected (< 7 days)" },
+                    { "value": "emergency", "label": "Emergency — Immediate public safety / sanitation hazard" }
+                  ]
+                },
+                "validation_rule": "required",
+                "help_text": "Priority determines routing queue urgency and SLA timer."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "schedule_and_delivery",
+        "name": "Schedule & Delivery",
+        "display_order": 2,
+        "subsections": [
+          {
+            "name": "Timing & Address",
+            "parameters": [
+              {
+                "field_key": "required_from",
+                "label": "Required From (Date & Time)",
+                "field_type": "date",
+                "control_type": "datepicker",
+                "mandatory": true,
+                "validation_rule": "required|future_or_today",
+                "help_text": "Exact date when asset must be installed or delivered."
+              },
+              {
+                "field_key": "required_until",
+                "label": "Required Until (Date & Time)",
+                "field_type": "date",
+                "control_type": "datepicker",
+                "mandatory": true,
+                "validation_rule": "required|after:required_from",
+                "help_text": "Date when asset can be decommissioned or retrieved."
+              },
+              {
+                "field_key": "delivery_location",
+                "label": "Delivery Point / Street Address",
+                "field_type": "text",
+                "control_type": "input",
+                "mandatory": true,
+                "validation_rule": "required|min:5|max:200",
+                "help_text": "Accessible unloading point for heavy municipal vehicles."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "justification_and_linkage",
+        "name": "Justification & Linkage",
+        "display_order": 3,
+        "subsections": [
+          {
+            "name": "Context",
+            "parameters": [
+              {
+                "field_key": "justification",
+                "label": "Operational Justification & Purpose",
+                "field_type": "textarea",
+                "control_type": "textarea",
+                "mandatory": true,
+                "validation_rule": "required|min:10|max:500",
+                "help_text": "Explain why municipal assets are required to ensure public safety or hygiene."
+              },
+              {
+                "field_key": "linked_permission_id",
+                "label": "Linked Event Permission ID (Optional)",
+                "field_type": "text",
+                "control_type": "input",
+                "mandatory": false,
+                "help_text": "Reference number or ID of the parent Event Permission application, if applicable."
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "workflow": {
+    "initial_state": "draft",
+    "states": [
+      { "key": "draft", "label": "Draft", "terminal": false },
+      { "key": "submitted", "label": "Submitted", "terminal": false, "sla_hours": 12 },
+      { "key": "department_review", "label": "Department Review", "terminal": false, "sla_hours": 24 },
+      { "key": "approved", "label": "Approved", "terminal": false },
+      { "key": "request_changes", "label": "Request Changes", "terminal": false },
+      { "key": "rejected", "label": "Rejected", "terminal": true },
+      { "key": "fulfilled", "label": "Fulfilled & Dispatched", "terminal": true }
+    ],
+    "transitions": [
+      {
+        "from": "draft",
+        "to": "submitted",
+        "action": "submit",
+        "allowed_roles": ["citizen", "coordinator_area", "admin"],
+        "side_effects": ["route_to_department", "create_review_tasks", "audit_log"]
+      },
+      {
+        "from": "submitted",
+        "to": "department_review",
+        "action": "assign_department",
+        "allowed_roles": ["coordinator_area", "coordinator_general", "admin"],
+        "side_effects": ["audit_log"]
+      },
+      {
+        "from": "department_review",
+        "to": "approved",
+        "action": "approve_resource",
+        "allowed_roles": ["director", "admin"],
+        "side_effects": ["schedule_dispatch", "audit_log"]
+      },
+      {
+        "from": "department_review",
+        "to": "request_changes",
+        "action": "request_resource_changes",
+        "allowed_roles": ["director", "admin"],
+        "side_effects": ["notify_applicant", "audit_log"]
+      },
+      {
+        "from": "department_review",
+        "to": "rejected",
+        "action": "reject_resource",
+        "allowed_roles": ["director", "admin"],
+        "side_effects": ["notify_applicant", "audit_log"]
+      },
+      {
+        "from": "request_changes",
+        "to": "draft",
+        "action": "reopen_for_edit",
+        "allowed_roles": ["citizen", "coordinator_area", "admin"],
+        "side_effects": ["audit_log"]
+      },
+      {
+        "from": "approved",
+        "to": "fulfilled",
+        "action": "mark_fulfilled",
+        "allowed_roles": ["director", "admin"],
+        "side_effects": ["close_task", "audit_log"]
+      }
+    ]
+  },
+  "rules": {
+    "authority_routing": [
+      {
+        "id": "RULE-RES-POLICE",
+        "authority_key": "police_traffic",
+        "description": "Barricades and crowd control assets route to Police Traffic / Bandobast cell.",
+        "condition": {
+          "or": [
+            { "==": [{ "var": "resource_type" }, "barricades"] },
+            { "==": [{ "var": "resource_type" }, "police_personnel"] }
+          ]
+        },
+        "matched_input_fields": ["resource_type"]
+      },
+      {
+        "id": "RULE-RES-WARD",
+        "authority_key": "pmc_ward_office",
+        "description": "Water tankers, portable toilets, and lighting route to PMC Ward & Solid Waste Management.",
+        "condition": {
+          "or": [
+            { "==": [{ "var": "resource_type" }, "water_tanker"] },
+            { "==": [{ "var": "resource_type" }, "portable_toilets"] },
+            { "==": [{ "var": "resource_type" }, "extra_lighting"] }
+          ]
+        },
+        "matched_input_fields": ["resource_type"]
+      },
+      {
+        "id": "RULE-RES-HEALTH",
+        "authority_key": "other",
+        "description": "Ambulance and medical aid route to PMC Health & Disaster Management.",
+        "condition": {
+          "==": [{ "var": "resource_type" }, "ambulance"]
+        },
+        "matched_input_fields": ["resource_type"]
+      }
+    ]
+  },
+  "reports": [
+    {
+      "key": "resources_by_type_and_status",
+      "name": "Resource Requests by Type & Status",
+      "output_format": "grouped_count",
+      "filters": {
+        "groupBy": "status",
+        "metric": "COUNT",
+        "public_stats": true
+      }
+    },
+    {
+      "key": "resources_by_priority",
+      "name": "Resource Requests by Priority Level",
+      "output_format": "table",
+      "filters": {
+        "columns": ["entity_id", "name", "area", "status"]
+      }
+    }
+  ]
+}
