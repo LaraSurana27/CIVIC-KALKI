@@ -437,58 +437,17 @@ export function renderHome() {
         <div class="ck-section-inner">
           <div class="ck-section-label">${SVG.flame} CIVIC BUZZ</div>
           <h2 class="ck-section-heading">Civic issues,<br>but make it <span class="ck-text-accent">relatable.</span></h2>
-          <p class="ck-section-sub">Real problems. Real frustration. Real humor. Because if we can't laugh about a pothole that's been there since 2019, what can we laugh about?</p>
+          <p class="ck-section-sub">Citizens can share respectful, AI-assisted civic awareness content after moderator review.</p>
 
           <div class="ck-buzz-grid">
-            <div class="ck-buzz-meme">
-              <div class="ck-meme-visual">
-                <div class="ck-meme-inner">
-                  <div class="ck-meme-top">POV: You reported a pothole</div>
-                  <div class="ck-meme-svg-stage">${SVG.potholeMeme}</div>
-                  <div class="ck-meme-bottom">3 months ago. It's now a swimming pool.</div>
-                </div>
-              </div>
-              <div class="ck-meme-meta">
-                <span>${SVG.eye} 2.3k views</span>
-                <span>${SVG.comment} 89 comments</span>
-                <span>${SVG.share} Share</span>
-              </div>
-            </div>
-            <div class="ck-buzz-meme">
-              <div class="ck-meme-visual ck-meme-v2">
-                <div class="ck-meme-inner">
-                  <div class="ck-meme-top">That streetlight that works on its own schedule</div>
-                  <div class="ck-meme-svg-stage">${SVG.lightMeme}</div>
-                  <div class="ck-meme-bottom">OFF at night. ON at 2 PM. Living its best life.</div>
-                </div>
-              </div>
-              <div class="ck-meme-meta">
-                <span>${SVG.eye} 1.8k views</span>
-                <span>${SVG.comment} 56 comments</span>
-                <span>${SVG.share} Share</span>
-              </div>
-            </div>
-            <div class="ck-buzz-meme">
-              <div class="ck-meme-visual ck-meme-v3">
-                <div class="ck-meme-inner">
-                  <div class="ck-meme-top">When the garbage truck comes</div>
-                  <div class="ck-meme-svg-stage">${SVG.truckMeme}</div>
-                  <div class="ck-meme-bottom">But only to your neighbor's street. Every. Single. Time.</div>
-                </div>
-              </div>
-              <div class="ck-meme-meta">
-                <span>${SVG.eye} 3.1k views</span>
-                <span>${SVG.comment} 142 comments</span>
-                <span>${SVG.share} Share</span>
-              </div>
-            </div>
+            <p class="ck-section-sub">No Buzz yet. Be the first to highlight an issue.</p>
           </div>
 
           <div class="ck-buzz-cta" style="display:flex; flex-direction:column; align-items:center; gap:12px;">
             <p>These aren't just memes. These are real issues waiting to be fixed.</p>
             <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center;">
-              <a href="/buzz" class="ck-btn-hero" style="background:linear-gradient(135deg, #f59e0b, #ef4444); border:none; color:#fff;">
-                🔥 Open Civic Buzz &amp; Meme Studio →
+              <a href="/meme/studio" class="ck-btn-hero" style="background:linear-gradient(135deg, #f59e0b, #ef4444); border:none; color:#fff;">
+                Open Civic Buzz Studio
               </a>
               <a href="/signup" class="ck-btn-hero">Report Yours. We'll Actually Fix It. →</a>
             </div>

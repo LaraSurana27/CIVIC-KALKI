@@ -183,6 +183,11 @@ export const agent = {
     if (!attachment) {
       return request('POST', '/agent/chat', { sessionId, message });
     }
+    const formData = new FormData();
+    formData.append('sessionId', sessionId);
+    formData.append('message', message || '');
+    formData.append('attachment', attachment);
+
     const headers = {
       'X-Requested-With': 'ck-web',
     };

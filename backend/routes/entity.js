@@ -260,6 +260,9 @@ router.post('/', async (req, res, next) => {
         )
       );
     }
+    if (entityType.name === 'Civic Campaign') {
+      return next(createError('Civic Campaign entities must be created through the moderated Civic Buzz workflow.', 403));
+    }
 
     // ── Jurisdiction validation and canonical area synchronization ───────────
     let parsedJurisdictionId = null;
@@ -331,6 +334,11 @@ router.get('/', async (req, res, next) => {
 
     // ── Filters ───────────────────────────────────────────────────────────────
     const where = {};
+    const campaignType = await prisma.entityType.findFirst({
+      where: { name: 'Civic Campaign' },
+      select: { entity_type_id: true },
+    });
+    if (campaignType) where.NOT = { entity_type_id: campaignType.entity_type_id };
 
     if (req.query.entity_type_id !== undefined) {
       where.entity_type_id = parsePositiveInt(
@@ -529,6 +537,9 @@ router.get('/:id', async (req, res, next) => {
         createError(`Entity with id ${entityId} was not found.`, 404)
       );
     }
+    if (entity.entityType?.name === 'Civic Campaign') {
+      return next(createError('Civic Campaign content is available only through the Civic Buzz endpoints.', 404));
+    }
 
     const visibleEntity = applyLocationVisibility(entity, req.user);
     return res.status(200).json({ success: true, data: visibleEntity });
@@ -577,6 +588,13 @@ router.put('/:id', async (req, res, next) => {
       return next(
         createError(`Entity with id ${entityId} was not found.`, 404)
       );
+    }
+    const existingType = await prisma.entityType.findUnique({
+      where: { entity_type_id: existing.entity_type_id },
+      select: { name: true },
+    });
+    if (existingType?.name === 'Civic Campaign') {
+      return next(createError('Civic Campaign drafts must be edited through the Civic Buzz workflow.', 403));
     }
 
     // ── Ownership protection: owner or privileged staff required ──────────────
@@ -701,6 +719,13 @@ router.delete('/:id', async (req, res, next) => {
       return next(
         createError(`Entity with id ${entityId} was not found.`, 404)
       );
+    }
+    const type = await prisma.entityType.findUnique({
+      where: { entity_type_id: existing.entity_type_id },
+      select: { name: true },
+    });
+    if (type?.name === 'Civic Campaign') {
+      return next(createError('Civic Campaign posts must be unpublished through the Civic Buzz workflow.', 403));
     }
 
     // ── Ownership protection: owner or privileged staff required ──────────────
@@ -841,6 +866,14 @@ router.post('/:id/transition', verifyToken, checkRole(['citizen', 'coordinator_a
       return next(createError('A reason is required when rejecting an entity.', 400));
     }
 
+    const target = await prisma.entity.findUnique({
+      where: { entity_id: entityId },
+      include: { entityType: { select: { name: true } } },
+    });
+    if (target?.entityType?.name === 'Civic Campaign') {
+      return next(createError('Civic Campaign status changes must use the moderated Civic Buzz workflow.', 403));
+    }
+
     const result = await executeWorkflowTransition({
       entityId,
       toStatus: normalizedToStatus,
@@ -880,6 +913,13 @@ router.post('/:id/transition', verifyToken, checkRole(['citizen', 'coordinator_a
 router.post('/:id/fire-rules', verifyToken, checkRole(['admin', 'director']), async (req, res, next) => {
   try {
     const entityId = parsePositiveInt(req.params.id, 'id');
+    const entity = await prisma.entity.findUnique({
+      where: { entity_id: entityId },
+      include: { entityType: { select: { name: true } } },
+    });
+    if (entity?.entityType?.name === 'Civic Campaign') {
+      return next(createError('Civic Buzz workflow rules cannot be triggered through the generic entity endpoint.', 403));
+    }
     const { eventType } = req.body;
 
     if (!eventType || typeof eventType !== 'string' || eventType.trim() === '') {
@@ -904,9 +944,15 @@ router.get('/:id/audit', async (req, res, next) => {
   try {
     const entityId = parsePositiveInt(req.params.id, 'id');
 
-    const entity = await prisma.entity.findUnique({ where: { entity_id: entityId } });
+    const entity = await prisma.entity.findUnique({
+      where: { entity_id: entityId },
+      include: { entityType: { select: { name: true } } },
+    });
     if (!entity) {
       return next(createError(`Entity with id ${entityId} was not found.`, 404));
+    }
+    if (entity.entityType?.name === 'Civic Campaign') {
+      return next(createError('Civic Buzz moderation history is not available through generic entity endpoints.', 404));
     }
 
     const [auditLogs, approvalHistory] = await Promise.all([

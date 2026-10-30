@@ -17,9 +17,34 @@
  */
 
 const request = require('supertest');
+const fs = require('fs');
+const path = require('path');
+const sharp = require('sharp');
+jest.mock('@google/generative-ai', () => ({
+  GoogleGenerativeAI: jest.fn().mockImplementation(() => ({
+    getGenerativeModel: jest.fn(() => ({
+      generateContent: jest.fn(async (prompt) => {
+        if (global.__civicBuzzGeminiUnavailable) throw new Error('Mock Gemini unavailable');
+        const isSafetyPrompt = prompt.toLowerCase().includes('safety classifier');
+        const response = isSafetyPrompt
+          ? { safe: true, violations: [] }
+          : {
+            options: [
+              { headline: 'Pothole on the route', caption: 'A citizen in Kothrud notices the pothole.' },
+              { headline: 'A local road reminder', caption: 'A citizen in Kothrud notices the pothole.' },
+              { headline: 'Keeping the route visible', caption: 'A citizen in Kothrud notices the pothole.' },
+            ],
+            uses_only_provided_facts: true,
+          };
+        return { response: { text: () => JSON.stringify(response) } };
+      }),
+    })),
+  })),
+}));
 const app = require('../index');
 const prisma = require('../db');
-const { createTestUser, cleanupAll, trackEntityId } = require('./helpers/authHelper');
+const { createTestUser, cleanupTrackedEntities } = require('./helpers/authHelper');
+const campaignUploadDir = path.join(__dirname, '..', 'campaign_uploads');
 
 // -- Import safety functions directly for unit tests -------------------------
 const { deterministicFilter } = require('../services/memeSafety');
@@ -111,8 +136,8 @@ describe('Suite 1 � Deterministic Safety Filter', () => {
 describe('Suite 2 � Config Allowlist/Blocklist Correctness', () => {
 
   test('2.1 Publicly visible statuses are correct', () => {
-    expect(PUBLICLY_VISIBLE_STATUSES).toContain('coordinator_approved');
     expect(PUBLICLY_VISIBLE_STATUSES).toContain('approved');
+    expect(PUBLICLY_VISIBLE_STATUSES).not.toContain('coordinator_approved');
     expect(PUBLICLY_VISIBLE_STATUSES).not.toContain('draft');
     expect(PUBLICLY_VISIBLE_STATUSES).not.toContain('submitted');
     expect(PUBLICLY_VISIBLE_STATUSES).not.toContain('rejected');
@@ -140,8 +165,24 @@ describe('Suite 3 � Meme API Integration', () => {
   let citizenHeaders, coordinatorHeaders, adminHeaders;
   let approvedIssue, draftIssue;
   let issueEntityTypeId;
+  let photoBuffer;
+  let originalGeminiKey;
+  const campaignIds = new Set();
+
+  async function attachPhoto(campaignId, headers) {
+    campaignIds.add(campaignId);
+    return request(app)
+      .post(`/meme/campaigns/${campaignId}/photo`)
+      .set(headers)
+      .attach('photo', photoBuffer, { filename: 'test.png', contentType: 'image/png' });
+  }
 
   beforeAll(async () => {
+    originalGeminiKey = process.env.GEMINI_API_KEY;
+    process.env.GEMINI_API_KEY = 'test-key';
+    photoBuffer = await sharp({
+      create: { width: 2, height: 2, channels: 3, background: { r: 80, g: 120, b: 160 } },
+    }).png().toBuffer();
     const cit = await createTestUser({ role: 'citizen' });
     citizenUser = cit.user;
     citizenHeaders = cit.headers;
@@ -179,36 +220,40 @@ describe('Suite 3 � Meme API Integration', () => {
         status: 'draft',
       },
     });
+
+    const categoryParameter = await prisma.parameterMaster.findFirst({ where: { field_key: 'category' } });
+    if (categoryParameter) {
+      await prisma.parameterValue.create({
+        data: {
+          entity_id: approvedIssue.entity_id,
+          parameter_id: categoryParameter.parameter_id,
+          value: 'potholes',
+        },
+      });
+    }
   });
 
   afterAll(async () => {
-    await cleanupAll();
-    // Clean up test entities
-    if (approvedIssue) {
-      await prisma.parameterValue.deleteMany({ where: { entity_id: approvedIssue.entity_id } }).catch(() => {});
-      await prisma.auditLog.deleteMany({ where: { entity_id: approvedIssue.entity_id } }).catch(() => {});
+    const campaignFileRecords = campaignIds.size
+      ? await prisma.fileRepository.findMany({
+        where: { entity_id: { in: Array.from(campaignIds) } },
+        select: { path: true },
+      }).catch(() => [])
+      : [];
+    for (const file of campaignFileRecords) {
+      const filePath = path.join(campaignUploadDir, path.basename(file.path || ''));
+      await fs.promises.unlink(filePath).catch(() => {});
     }
-    if (draftIssue) {
-      await prisma.parameterValue.deleteMany({ where: { entity_id: draftIssue.entity_id } }).catch(() => {});
-      await prisma.auditLog.deleteMany({ where: { entity_id: draftIssue.entity_id } }).catch(() => {});
-    }
-    // Clean up campaign entities created during tests
-    const campaignType = await prisma.entityType.findFirst({ where: { name: 'Civic Campaign' } });
-    if (campaignType) {
-      const campaigns = await prisma.entity.findMany({
-        where: { entity_type_id: campaignType.entity_type_id },
-        select: { entity_id: true },
+    await cleanupTrackedEntities();
+    const testUserIds = [citizenUser?.user_id, coordinatorUser?.user_id, adminUser?.user_id].filter(Boolean);
+    if (testUserIds.length) {
+      await prisma.aIExecutionLog.deleteMany({
+        where: { requested_by_user_id: { in: testUserIds }, analysis_type: 'meme_safety' },
       });
-      for (const c of campaigns) {
-        await prisma.civicCampaignEvent.deleteMany({ where: { campaign_id: c.entity_id } }).catch(() => {});
-        await prisma.parameterValue.deleteMany({ where: { entity_id: c.entity_id } }).catch(() => {});
-        await prisma.auditLog.deleteMany({ where: { entity_id: c.entity_id } }).catch(() => {});
-        await prisma.approvalHistory.deleteMany({ where: { entity_id: c.entity_id } }).catch(() => {});
-        await prisma.entity.delete({ where: { entity_id: c.entity_id } }).catch(() => {});
-      }
+      await prisma.user.deleteMany({ where: { user_id: { in: testUserIds } } });
     }
-    if (approvedIssue) await prisma.entity.delete({ where: { entity_id: approvedIssue.entity_id } }).catch(() => {});
-    if (draftIssue) await prisma.entity.delete({ where: { entity_id: draftIssue.entity_id } }).catch(() => {});
+    if (originalGeminiKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = originalGeminiKey;
   });
 
   // -- 3.1 Config endpoint ------------------------------------------------
@@ -283,6 +328,21 @@ describe('Suite 3 � Meme API Integration', () => {
     expect(res.body.data.passed).toBe(false);
   });
 
+  test('3.6a Classifier failure is flagged as unavailable, not passed', async () => {
+    global.__civicBuzzGeminiUnavailable = true;
+    try {
+      const res = await request(app)
+        .post('/meme/safety-check')
+        .set(citizenHeaders)
+        .send({ headline: 'Pothole near the park', caption: 'A citizen notices a pothole.' });
+      expect(res.status).toBe(200);
+      expect(res.body.data.passed).toBe(false);
+      expect(res.body.data.ai_safety.status).toBe('unavailable');
+    } finally {
+      global.__civicBuzzGeminiUnavailable = false;
+    }
+  });
+
   // -- 3.7 Safety check: political caption blocked -----------------------
   test('3.7 Safety check: political party name is blocked', async () => {
     const res = await request(app)
@@ -304,7 +364,8 @@ describe('Suite 3 � Meme API Integration', () => {
       .set(citizenHeaders)
       .send({
         issue_id: approvedIssue.entity_id,
-        template_type: 'awareness',
+        category: 'potholes',
+        template: 'awareness',
         headline: 'Pothole near park',
         caption: 'This pothole has been here for a while.',
         caption_source: 'ai',
@@ -321,7 +382,8 @@ describe('Suite 3 � Meme API Integration', () => {
       .set(citizenHeaders)
       .send({
         issue_id: draftIssue.entity_id,
-        template_type: 'awareness',
+        category: 'potholes',
+        template: 'awareness',
         headline: 'Light is broken',
         caption: 'The street light has been broken.',
         caption_source: 'manual',
@@ -339,7 +401,9 @@ describe('Suite 3 � Meme API Integration', () => {
       .set(citizenHeaders)
       .send({
         issue_id: approvedIssue.entity_id,
-        template_type: 'awareness',
+        category: 'potholes',
+        template: 'awareness',
+        locality: 'Kothrud',
         headline: 'Pothole near park',
         caption: 'A pothole in Kothrud needs attention. Report filed.',
         caption_source: 'manual',
@@ -347,6 +411,8 @@ describe('Suite 3 � Meme API Integration', () => {
       });
     expect(createRes.status).toBe(201);
     const campaignId = createRes.body.data.campaign.entity_id;
+    const uploadRes = await attachPhoto(campaignId, citizenHeaders);
+    expect(uploadRes.status).toBe(201);
 
     // Submit
     const submitRes = await request(app)
@@ -354,26 +420,13 @@ describe('Suite 3 � Meme API Integration', () => {
       .set(citizenHeaders);
     expect(submitRes.status).toBe(200);
 
-    // Coordinator/Admin approves
-    const approveRes = await request(app)
-      .post(`/meme/campaigns/${campaignId}/transition`)
-      .set(adminHeaders)
-      .send({ to_status: 'approved' });
-    expect(approveRes.status).toBe(200);
-
-    // Verify NOT published yet (requires explicit publish step)
-    const campaignAfterApprove = await prisma.entity.findUnique({ where: { entity_id: campaignId } });
-    expect(campaignAfterApprove.status).toBe('approved');
-    expect(campaignAfterApprove.status).not.toBe('published');
-
-    // Publish
+    // Coordinator/Admin publishes after moderator review
     const publishRes = await request(app)
       .post(`/meme/campaigns/${campaignId}/transition`)
       .set(adminHeaders)
       .send({ to_status: 'published' });
     expect(publishRes.status).toBe(200);
 
-    // Verify published
     const campaignAfterPublish = await prisma.entity.findUnique({ where: { entity_id: campaignId } });
     expect(campaignAfterPublish.status).toBe('published');
 
@@ -388,7 +441,9 @@ describe('Suite 3 � Meme API Integration', () => {
       .set(citizenHeaders)
       .send({
         issue_id: approvedIssue.entity_id,
-        template_type: 'awareness',
+        category: 'potholes',
+        template: 'awareness',
+        locality: 'Kothrud',
         headline: 'Pothole awareness',
         caption: 'A pothole in Kothrud needs attention.',
         caption_source: 'manual',
@@ -396,6 +451,7 @@ describe('Suite 3 � Meme API Integration', () => {
       });
     expect(createRes.status).toBe(201);
     const campaignId = createRes.body.data.campaign.entity_id;
+    await attachPhoto(campaignId, citizenHeaders);
 
     await request(app)
       .post(`/meme/campaigns/${campaignId}/submit`)
@@ -415,12 +471,38 @@ describe('Suite 3 � Meme API Integration', () => {
     expect(shareRes.body.error).toMatch(/no longer available/i);
   });
 
+  test('3.11a Unpublished photo is unavailable to non-authors', async () => {
+    const createRes = await request(app)
+      .post('/meme/campaigns')
+      .set(citizenHeaders)
+      .send({
+        category: 'potholes',
+        locality: 'Kothrud',
+        template: 'awareness',
+        headline: 'Local road reminder',
+        caption: 'A citizen in Kothrud notices a pothole.',
+        caption_source: 'manual',
+        attestation_accepted: true,
+      });
+    expect(createRes.status).toBe(201);
+    const campaignId = createRes.body.data.campaign.entity_id;
+    await attachPhoto(campaignId, citizenHeaders);
+
+    const authorPhoto = await request(app)
+      .get(`/meme/campaigns/${campaignId}/photo`)
+      .set(citizenHeaders);
+    expect(authorPhoto.status).toBe(200);
+    const anonymousPhoto = await request(app).get(`/meme/campaigns/${campaignId}/photo`);
+    expect(anonymousPhoto.status).toBe(404);
+  });
+
   // -- 3.12 RBAC: citizen cannot moderate -------------------------------
   test('3.12 RBAC: citizen cannot access moderation transition endpoint', async () => {
+    const campaignId = Array.from(campaignIds).at(-1);
     const res = await request(app)
-      .post('/meme/campaigns/1/transition')
+      .post(`/meme/campaigns/${campaignId}/transition`)
       .set(citizenHeaders)
-      .send({ to_status: 'approved' });
+      .send({ to_status: 'published' });
     expect(res.status).toBe(403);
   });
 
@@ -432,7 +514,9 @@ describe('Suite 3 � Meme API Integration', () => {
       .set(citizenHeaders)
       .send({
         issue_id: approvedIssue.entity_id,
-        template_type: 'awareness',
+        category: 'potholes',
+        template: 'awareness',
+        locality: 'Kothrud',
         headline: 'Impact test campaign',
         caption: 'A test campaign for impact tracking.',
         caption_source: 'manual',
@@ -440,11 +524,10 @@ describe('Suite 3 � Meme API Integration', () => {
       });
     expect(createRes.status).toBe(201);
     const campaignId = createRes.body.data.campaign.entity_id;
+    await attachPhoto(campaignId, citizenHeaders);
 
     // Submit
     await request(app).post(`/meme/campaigns/${campaignId}/submit`).set(citizenHeaders);
-    // Approve
-    await request(app).post(`/meme/campaigns/${campaignId}/transition`).set(adminHeaders).send({ to_status: 'approved' });
     // Publish
     await request(app).post(`/meme/campaigns/${campaignId}/transition`).set(adminHeaders).send({ to_status: 'published' });
 
@@ -473,7 +556,9 @@ describe('Suite 3 � Meme API Integration', () => {
       .set(citizenHeaders)
       .send({
         issue_id: approvedIssue.entity_id,
-        template_type: 'awareness',
+        category: 'potholes',
+        template: 'awareness',
+        locality: 'Kothrud',
         headline: 'Privacy test',
         caption: 'A privacy test campaign in Kothrud.',
         caption_source: 'manual',
@@ -481,10 +566,10 @@ describe('Suite 3 � Meme API Integration', () => {
       });
     expect(createRes.status).toBe(201);
     const campaignId = createRes.body.data.campaign.entity_id;
+    await attachPhoto(campaignId, citizenHeaders);
 
     // Publish it
     await request(app).post(`/meme/campaigns/${campaignId}/submit`).set(citizenHeaders);
-    await request(app).post(`/meme/campaigns/${campaignId}/transition`).set(adminHeaders).send({ to_status: 'approved' });
     await request(app).post(`/meme/campaigns/${campaignId}/transition`).set(adminHeaders).send({ to_status: 'published' });
 
     const feedRes = await request(app).get('/meme/feed');

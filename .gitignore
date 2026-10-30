@@ -6,3 +6,4 @@ __pycache__/
 node_modules/ 
 .env 
 backend/seed-tokens.json
+backend/campaign_uploads/

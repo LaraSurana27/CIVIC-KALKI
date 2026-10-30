@@ -89,8 +89,14 @@ router.post('/upload', upload.array('files', 5), async (req, res, next) => {
     const parsedParamId = parsePositiveInt(parameter_id, 'parameter_id');
 
     // Verify entity exists
-    const entity = await prisma.entity.findUnique({ where: { entity_id: parsedEntityId } });
+    const entity = await prisma.entity.findUnique({
+      where: { entity_id: parsedEntityId },
+      include: { entityType: { select: { name: true } } },
+    });
     if (!entity) return next(createError(`Entity ${parsedEntityId} not found.`, 404));
+    if (entity.entityType?.name === 'Civic Campaign') {
+      return next(createError('Campaign photos must use the scoped Civic Buzz upload endpoint.', 403));
+    }
 
     // Verify parameter exists and is a file type
     const param = await prisma.parameterMaster.findUnique({ where: { parameter_id: parsedParamId } });
@@ -147,6 +153,14 @@ router.post('/upload', upload.array('files', 5), async (req, res, next) => {
 router.get('/entity/:id', async (req, res, next) => {
   try {
     const entityId = parsePositiveInt(req.params.id, 'id');
+    const entity = await prisma.entity.findUnique({
+      where: { entity_id: entityId },
+      include: { entityType: { select: { name: true } } },
+    });
+    if (!entity) return next(createError(`Entity ${entityId} not found.`, 404));
+    if (entity.entityType?.name === 'Civic Campaign') {
+      return next(createError('Campaign photos are served only through the scoped Civic Buzz endpoint.', 404));
+    }
     const files = await prisma.fileRepository.findMany({
       where: { entity_id: entityId },
       include: {
@@ -167,8 +181,14 @@ router.get('/entity/:id', async (req, res, next) => {
 router.get('/:fileId', async (req, res, next) => {
   try {
     const fileId = parsePositiveInt(req.params.fileId, 'fileId');
-    const record = await prisma.fileRepository.findUnique({ where: { file_id: fileId } });
+    const record = await prisma.fileRepository.findUnique({
+      where: { file_id: fileId },
+      include: { entity: { include: { entityType: { select: { name: true } } } } },
+    });
     if (!record) return next(createError(`File ${fileId} not found.`, 404));
+    if (record.entity.entityType?.name === 'Civic Campaign') {
+      return next(createError('Campaign photos are served only through the scoped Civic Buzz endpoint.', 404));
+    }
 
     const filePath = path.join(UPLOAD_DIR, record.path);
     if (!fs.existsSync(filePath)) {
@@ -188,8 +208,14 @@ router.get('/:fileId', async (req, res, next) => {
 router.delete('/:fileId', async (req, res, next) => {
   try {
     const fileId = parsePositiveInt(req.params.fileId, 'fileId');
-    const record = await prisma.fileRepository.findUnique({ where: { file_id: fileId } });
+    const record = await prisma.fileRepository.findUnique({
+      where: { file_id: fileId },
+      include: { entity: { include: { entityType: { select: { name: true } } } } },
+    });
     if (!record) return next(createError(`File ${fileId} not found.`, 404));
+    if (record.entity.entityType?.name === 'Civic Campaign') {
+      return next(createError('Campaign photos are managed only through the Civic Buzz workflow.', 404));
+    }
 
     // Delete physical file (best effort)
     const filePath = path.join(UPLOAD_DIR, record.path);

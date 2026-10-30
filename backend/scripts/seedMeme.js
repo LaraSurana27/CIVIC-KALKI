@@ -1,5 +1,5 @@
 /**
- * CIVIC-KALKI — Seed: Civic Campaign EntityType + Form + Parameters + Workflow
+ * CIVIC-KALKI ï¿½ Seed: Civic Campaign EntityType + Form + Parameters + Workflow
  *
  * Run: node backend/scripts/seedMeme.js
  *
@@ -21,7 +21,7 @@ const prisma = new PrismaClient();
 async function run() {
   console.log('[SEED MEME] Starting Civic Campaign module seed...');
 
-  // 1. Domain — reuse existing domain_id = 1
+  // 1. Domain ï¿½ reuse existing domain_id = 1
   const domain = await prisma.domain.findFirst();
   if (!domain) throw new Error('No domain found. Run main seed.js first.');
 
@@ -82,64 +82,68 @@ async function run() {
     subsection = existingSubs[0];
   }
 
-  // 7. ParameterMasters — all campaign metadata fields
+  // 7. ParameterMasters ï¿½ all campaign metadata fields
   const PARAMS = [
-    { field_key: 'linked_entity_id',       label: 'Linked Issue ID',         field_type: 'number', mandatory: true },
-    { field_key: 'template_type',           label: 'Template Type',           field_type: 'text',   mandatory: true },
-    { field_key: 'headline',               label: 'Meme Headline',           field_type: 'text',   mandatory: true },
-    { field_key: 'caption',                label: 'Meme Caption',            field_type: 'textarea', mandatory: true },
-    { field_key: 'caption_source',         label: 'Caption Source',          field_type: 'text',   mandatory: false },
-    { field_key: 'original_ai_suggestion', label: 'Original AI Suggestion',  field_type: 'textarea', mandatory: false },
-    { field_key: 'deterministic_result',   label: 'Deterministic Safety Result', field_type: 'textarea', mandatory: false },
-    { field_key: 'ai_safety_result',       label: 'AI Safety Check Result',  field_type: 'textarea', mandatory: false },
-    { field_key: 'attestation_accepted',   label: 'Photo Attestation Accepted', field_type: 'text', mandatory: true },
-    { field_key: 'photo_file_id',          label: 'Photo File ID',           field_type: 'number', mandatory: false },
+    { field_key: 'photo_file_id', label: 'Photo File ID', field_type: 'number', mandatory: true },
+    { field_key: 'headline', label: 'Headline', field_type: 'text', mandatory: true },
+    { field_key: 'caption', label: 'Caption', field_type: 'textarea', mandatory: true },
+    { field_key: 'template', label: 'Template', field_type: 'text', mandatory: true, options: ['relatable', 'awareness', 'cta'] },
+    { field_key: 'category', label: 'Category', field_type: 'text', mandatory: true, options: ['garbage', 'potholes', 'streetlights', 'waterlogging', 'parks/public spaces', 'accidents', 'injury', 'health emergencies', "women's safety", 'crime', 'harassment', 'communal', 'political'] },
+    { field_key: 'locality', label: 'Locality', field_type: 'text', mandatory: true },
+    { field_key: 'linked_entity_id', label: 'Linked Issue ID', field_type: 'number', mandatory: false },
+    { field_key: 'caption_source', label: 'Caption Source', field_type: 'text', mandatory: true, options: ['ai', 'ai_edited', 'manual'] },
+    { field_key: 'original_ai_suggestion', label: 'Original AI Suggestion', field_type: 'textarea', mandatory: false },
+    { field_key: 'deterministic_result', label: 'Deterministic Safety Result', field_type: 'textarea', mandatory: true },
+    { field_key: 'ai_safety_result', label: 'AI Safety Result', field_type: 'textarea', mandatory: true },
+    { field_key: 'attestation_accepted', label: 'Photo Attestation Accepted', field_type: 'text', mandatory: true },
   ];
 
   for (let i = 0; i < PARAMS.length; i++) {
     const p = PARAMS[i];
-    const existing = await prisma.parameterMaster.findFirst({
-      where: { subsection_id: subsection.subsection_id, field_key: p.field_key },
-    });
-    if (!existing) {
-      await prisma.parameterMaster.create({
-        data: {
+    await prisma.parameterMaster.upsert({
+      where: {
+        subsection_id_field_key: {
           subsection_id: subsection.subsection_id,
-          category_id: cat.category_id,
           field_key: p.field_key,
-          label: p.label,
-          field_type: p.field_type,
-          control_type: p.field_type === 'textarea' ? 'textarea' : 'input',
-          display_order: i + 1,
-          mandatory: p.mandatory || false,
         },
-      });
-      console.log(`[SEED MEME] Created parameter: ${p.field_key}`);
-    }
+      },
+      create: {
+        subsection_id: subsection.subsection_id,
+        category_id: cat.category_id,
+        field_key: p.field_key,
+        label: p.label,
+        field_type: p.field_type,
+        control_type: p.field_type === 'textarea' ? 'textarea' : 'input',
+        display_order: i + 1,
+        mandatory: p.mandatory,
+        options: p.options,
+      },
+      update: {
+        category_id: cat.category_id,
+        label: p.label,
+        field_type: p.field_type,
+        control_type: p.field_type === 'textarea' ? 'textarea' : 'input',
+        display_order: i + 1,
+        mandatory: p.mandatory,
+        options: p.options,
+      },
+    });
   }
 
   // 8. WorkflowMaster transitions (idempotent)
   const TRANSITIONS = [
-    { trigger: 'draft',          action: 'pending_review', stage: 'citizen' },
-    { trigger: 'pending_review', action: 'approved',       stage: 'coordinator_area' },
-    { trigger: 'pending_review', action: 'approved',       stage: 'coordinator_general' },
-    { trigger: 'pending_review', action: 'approved',       stage: 'admin' },
-    { trigger: 'pending_review', action: 'rejected',       stage: 'coordinator_area' },
-    { trigger: 'pending_review', action: 'rejected',       stage: 'coordinator_general' },
-    { trigger: 'pending_review', action: 'rejected',       stage: 'admin' },
-    { trigger: 'approved',       action: 'published',      stage: 'coordinator_area' },
-    { trigger: 'approved',       action: 'published',      stage: 'coordinator_general' },
-    { trigger: 'approved',       action: 'published',      stage: 'admin' },
-    { trigger: 'approved',       action: 'rejected',       stage: 'coordinator_area' },
-    { trigger: 'approved',       action: 'rejected',       stage: 'admin' },
-    { trigger: 'published',      action: 'under_review',   stage: 'coordinator_area' },
-    { trigger: 'published',      action: 'under_review',   stage: 'admin' },
-    { trigger: 'published',      action: 'rejected',       stage: 'coordinator_area' },
-    { trigger: 'published',      action: 'rejected',       stage: 'admin' },
-    { trigger: 'under_review',   action: 'approved',       stage: 'coordinator_area' },
-    { trigger: 'under_review',   action: 'approved',       stage: 'admin' },
-    { trigger: 'under_review',   action: 'rejected',       stage: 'coordinator_area' },
-    { trigger: 'under_review',   action: 'rejected',       stage: 'admin' },
+    { trigger: 'draft', action: 'pending_review', stage: 'citizen' },
+    ...['coordinator_area', 'coordinator_general', 'admin'].flatMap((stage) => [
+      { trigger: 'pending_review', action: 'published', stage },
+      { trigger: 'pending_review', action: 'rejected', stage },
+      { trigger: 'published', action: 'under_review', stage },
+      { trigger: 'published', action: 'unpublished', stage },
+      { trigger: 'under_review', action: 'published', stage },
+      { trigger: 'under_review', action: 'rejected', stage },
+    ]),
+    { trigger: 'published', action: 'unpublished', stage: 'citizen' },
+    { trigger: 'under_review', action: 'unpublished', stage: 'citizen' },
+    { trigger: 'rejected', action: 'draft', stage: 'citizen' },
   ];
 
   for (const tr of TRANSITIONS) {

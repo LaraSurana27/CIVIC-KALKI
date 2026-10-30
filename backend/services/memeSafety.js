@@ -8,6 +8,7 @@
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const prisma = require('../db');
+const { GEMINI_MODEL } = require('./aiSuggestion');
 const {
   PROFANITY_BLOCKLIST,
   POLITICAL_BLOCKLIST,
@@ -132,7 +133,7 @@ Respond with ONLY a valid JSON object (no markdown, no explanation):
 
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({
-    model: 'gemini-1.5-flash',
+    model: GEMINI_MODEL,
     generationConfig: { temperature: 0.1 },
   });
 
@@ -144,7 +145,9 @@ Respond with ONLY a valid JSON object (no markdown, no explanation):
     const result = await model.generateContent(promptText);
     rawResponse = result.response.text();
     parsed = JSON.parse(cleanJsonResponseText(rawResponse));
-    if (typeof parsed.safe !== 'boolean') throw new Error('Missing safe boolean');
+    if (typeof parsed.safe !== 'boolean' || !Array.isArray(parsed.violations)) {
+      throw new Error('Classifier response schema is invalid');
+    }
   } catch (e) {
     console.warn('[MEME SAFETY] AI classifier attempt 1 failed:', e.message);
     try {
@@ -153,7 +156,9 @@ Respond with ONLY a valid JSON object (no markdown, no explanation):
       );
       rawResponse = retryResult.response.text();
       parsed = JSON.parse(cleanJsonResponseText(rawResponse));
-      if (typeof parsed.safe !== 'boolean') throw new Error('Missing safe boolean on retry');
+      if (typeof parsed.safe !== 'boolean' || !Array.isArray(parsed.violations)) {
+        throw new Error('Classifier response schema is invalid on retry');
+      }
     } catch (e2) {
       errorMessage = e2.message;
       console.error('[MEME SAFETY] AI classifier both attempts failed:', e2.message);
@@ -186,7 +191,7 @@ async function logAiCall({ entityId, userId, type, prompt, response, status, err
         entity_id: entityId ? Number(entityId) : null,
         requested_by_user_id: userId ? Number(userId) : null,
         provider: 'gemini',
-        model: 'gemini-1.5-flash',
+        model: GEMINI_MODEL,
         prompt: prompt || null,
         response: response || null,
         status: status || 'completed',

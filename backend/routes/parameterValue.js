@@ -124,9 +124,13 @@ router.post('/', async (req, res, next) => {
     // ── Entity existence check ─────────────────────────────────────────────
     const entity = await prisma.entity.findUnique({
       where: { entity_id: entityId },
+      include: { entityType: { select: { name: true } } },
     });
     if (!entity) {
       return next(createError(`Entity with id ${entityId} was not found.`, 404));
+    }
+    if (entity.entityType?.name === 'Civic Campaign') {
+      return next(createError('Civic Campaign values can only be changed through the moderated Civic Buzz workflow.', 403));
     }
 
     // ── Body structure validation ──────────────────────────────────────────
@@ -214,6 +218,9 @@ router.get('/', async (req, res, next) => {
     if (!entity) {
       return next(createError(`Entity with id ${entityId} was not found.`, 404));
     }
+    if (entity.entityType?.name === 'Civic Campaign') {
+      return next(createError('Civic Campaign values are available only through the Civic Buzz endpoints.', 404));
+    }
 
     // ── Fetch values ───────────────────────────────────────────────────────
     let parameterValues = await prisma.parameterValue.findMany({
@@ -265,9 +272,13 @@ router.put('/', async (req, res, next) => {
     // ── Entity existence check ─────────────────────────────────────────────
     const entity = await prisma.entity.findUnique({
       where: { entity_id: entityId },
+      include: { entityType: { select: { name: true } } },
     });
     if (!entity) {
       return next(createError(`Entity with id ${entityId} was not found.`, 404));
+    }
+    if (entity.entityType?.name === 'Civic Campaign') {
+      return next(createError('Civic Campaign values can only be changed through the moderated Civic Buzz workflow.', 403));
     }
 
     // ── Body structure validation ──────────────────────────────────────────

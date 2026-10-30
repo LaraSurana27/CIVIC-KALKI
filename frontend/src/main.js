@@ -43,6 +43,7 @@ addRoute('/director', renderDashboard);
 addRoute('/coordinator', renderDashboard);
 addRoute('/workspace', renderDashboard);
 addRoute('/agent/chat', renderAgentChat);            // Conversational Agent V1
+addRoute('/meme/studio', renderMemeStudio);
 addRoute('/meme/studio/:issueId', renderMemeStudio); // Civic Meme Studio
 addRoute('/buzz', renderCivicBuzz);                  // Civic Buzz Feed
 
@@ -80,4 +81,3 @@ initAuth().finally(() => {
   initRouter();
   initLanguageSupport();
 });
-

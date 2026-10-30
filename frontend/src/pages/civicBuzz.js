@@ -4,7 +4,7 @@
  * Features:
  *  - Feed view (only Published memes, live issue status, real honest metrics)
  *  - "My Memes" view (citizen's submissions, statuses, rejection reasons)
- *  - Honest engagement tracking (view, issue_click, share_initiated)
+ *  - Honest engagement tracking from persisted campaign events
  *  - Client-side PNG export (html-to-image) for approved/published campaigns
  *  - "Report this meme" takedown flow (sets to under_review, hides immediately)
  */
@@ -33,12 +33,15 @@ function getSessionKey() {
   return `${sid}_${today}`;
 }
 
-let activeTab = 'feed'; // 'feed' | 'my'
+let activeTab = 'feed';
 let feedCampaigns = [];
 let myCampaigns = [];
 let reportingCampaignId = null;
 
 export async function renderCivicBuzz() {
+  const isModerator = ['coordinator_area', 'coordinator_general', 'admin'].includes(getUser()?.role);
+  const requestedTab = new URLSearchParams(window.location.search).get('tab');
+  activeTab = requestedTab === 'review' && isModerator ? 'review' : 'feed';
   const app = document.getElementById('app');
   app.innerHTML = renderLayout(`
     <div class="buzz-container" style="max-width: 1200px; margin: 0 auto; padding: 24px 16px;">
@@ -80,6 +83,12 @@ export async function renderCivicBuzz() {
             border: none; padding: 8px 18px; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer;">
             👤 My Memes &amp; Drafts
           </button>
+          ${isModerator ? `<button id="tab-review" class="buzz-tab ${activeTab === 'review' ? 'buzz-tab-active' : ''}" style="
+            background: ${activeTab === 'review' ? 'var(--primary, #3b82f6)' : 'transparent'};
+            color: ${activeTab === 'review' ? '#fff' : '#94a3b8'};
+            border: none; padding: 8px 18px; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer;">
+            Review Queue
+          </button>` : ''}
         </div>
       </div>
 
@@ -99,7 +108,7 @@ export async function renderCivicBuzz() {
                   max-width: 480px; width: 100%; padding: 24px; color: #fff;">
         <h3 style="font-size: 18px; font-weight: 700; margin-top: 0; margin-bottom: 10px;">🚩 Report Meme</h3>
         <p style="font-size: 13px; color: #94a3b8; margin-bottom: 16px;">
-          Reporting will immediately place this campaign <strong>Under Review</strong> and remove it from the public feed pending moderator investigation.
+          Reports are reviewed by moderators. Multiple distinct reports may hide a post while it is reviewed.
         </p>
         <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;">Reason for Report *</label>
         <textarea id="buzz-report-reason" rows="3" class="form-input" placeholder="e.g. Inappropriate photo, contains private individual, misleading claim..."
@@ -107,7 +116,7 @@ export async function renderCivicBuzz() {
         <div style="display: flex; justify-content: flex-end; gap: 10px;">
           <button id="buzz-report-cancel" class="btn btn-secondary">Cancel</button>
           <button id="buzz-report-submit" class="btn btn-danger" style="background: #ef4444; color: #fff; border: none; font-weight: 600;">
-            Confirm Report &amp; Takedown
+            Submit Report
           </button>
         </div>
       </div>
@@ -121,8 +130,7 @@ export async function renderCivicBuzz() {
 
 function attachBuzzHeaderEvents() {
   document.getElementById('buzz-create-btn')?.addEventListener('click', () => {
-    navigate('/entities');
-    toast('Select an approved issue and click "Create Civic Meme" to start.');
+    navigate('/meme/studio');
   });
 
   document.getElementById('tab-feed')?.addEventListener('click', async () => {
@@ -145,6 +153,12 @@ function attachBuzzHeaderEvents() {
     await loadCurrentTab();
   });
 
+  document.getElementById('tab-review')?.addEventListener('click', async () => {
+    activeTab = 'review';
+    updateTabs();
+    await loadCurrentTab();
+  });
+
   // Modal events
   document.getElementById('buzz-report-cancel')?.addEventListener('click', () => {
     document.getElementById('buzz-report-modal').style.display = 'none';
@@ -158,8 +172,8 @@ function attachBuzzHeaderEvents() {
       return;
     }
     try {
-      await apiRequest('POST', `/meme/campaigns/${reportingCampaignId}/report`, { reason });
-      toastSuccess('Content reported. Placed under review and hidden from feed.');
+      const reportResult = await apiRequest('POST', `/meme/campaigns/${reportingCampaignId}/report`, { reason });
+      toastSuccess(reportResult.message || 'Report recorded for moderator review.');
       document.getElementById('buzz-report-modal').style.display = 'none';
       reportingCampaignId = null;
       await loadCurrentTab();
@@ -172,11 +186,12 @@ function attachBuzzHeaderEvents() {
 function updateTabs() {
   const tabFeed = document.getElementById('tab-feed');
   const tabMy = document.getElementById('tab-my');
-  if (tabFeed && tabMy) {
-    tabFeed.style.background = activeTab === 'feed' ? 'var(--primary, #3b82f6)' : 'transparent';
-    tabFeed.style.color = activeTab === 'feed' ? '#fff' : '#94a3b8';
-    tabMy.style.background = activeTab === 'my' ? 'var(--primary, #3b82f6)' : 'transparent';
-    tabMy.style.color = activeTab === 'my' ? '#fff' : '#94a3b8';
+  const tabReview = document.getElementById('tab-review');
+  for (const [tab, name] of [[tabFeed, 'feed'], [tabMy, 'my'], [tabReview, 'review']]) {
+    if (tab) {
+      tab.style.background = activeTab === name ? 'var(--primary, #3b82f6)' : 'transparent';
+      tab.style.color = activeTab === name ? '#fff' : '#94a3b8';
+    }
   }
 }
 
@@ -193,20 +208,22 @@ async function loadCurrentTab() {
   try {
     if (activeTab === 'feed') {
       const res = await apiRequest('GET', '/meme/feed');
-      feedCampaigns = res.campaigns || [];
+      feedCampaigns = res.data || [];
       renderFeedView(container, feedCampaigns);
 
-      // Record views for all visible feed items (deduplicated by session key)
-      const sessionKey = getSessionKey();
+      const sessionId = getSessionKey();
       feedCampaigns.forEach((c) => {
         apiRequest('POST', `/meme/campaigns/${c.campaign_id}/event`, {
           event_type: 'view',
-          session_key: sessionKey,
+          session_id: sessionId,
         }).catch(() => {});
       });
+    } else if (activeTab === 'review') {
+      const res = await apiRequest('GET', '/meme/campaigns?status=pending_review');
+      renderReviewQueueView(container, res.data || []);
     } else {
       const res = await apiRequest('GET', '/meme/my');
-      myCampaigns = res.campaigns || [];
+      myCampaigns = res.data || [];
       renderMyMemesView(container, myCampaigns);
     }
   } catch (err) {
@@ -243,14 +260,14 @@ function renderFeedView(container, campaigns) {
       headline: c.headline,
       caption: c.caption,
       locality: c.locality,
-      category: c.issue_category,
-      photoUrl: c.photo_file_id ? `/api/files/${c.photo_file_id}` : null,
-      shareLink: `/entities/${c.linked_entity_id}`,
+      category: c.category,
+      photoUrl: c.photo_url,
+      shareLink: c.linked_entity_id ? `/entities/${c.linked_entity_id}` : null,
       exportMode: false,
     });
 
-    const metrics = c.impact || { views: 0, issue_clicks: 0, shares_initiated: 0, participation: 0 };
-    const hasActivity = metrics.views > 0 || metrics.issue_clicks > 0 || metrics.shares_initiated > 0 || metrics.participation > 0;
+    const metrics = c.impact;
+    const hasActivity = metrics.views > 0 || metrics.clicks > 0 || metrics.shares > 0 || metrics.upvotes > 0;
 
     return `
       <div class="buzz-feed-item" style="
@@ -272,14 +289,14 @@ function renderFeedView(container, campaigns) {
           <div>
             <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 8px;">
               <span style="font-size: 12px; font-weight: 700; color: #38bdf8; text-transform: uppercase; letter-spacing: 0.5px;">
-                ${escapeHtml(c.issue_category || 'Civic Issue')}
+                ${escapeHtml(c.category || 'Civic Issue')}
               </span>
               <span style="font-size: 11px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 12px; padding: 2px 8px; font-weight: 600;">
-                Live Issue: ${escapeHtml(c.issue_status || 'Active')}
+                ${c.linked_entity_id ? `Live issue status: ${escapeHtml(c.linked_issue_status || 'Unavailable')}` : escapeHtml(c.verification_label)}
               </span>
             </div>
             <h4 style="color: #fff; font-size: 15px; font-weight: 700; margin: 0 0 10px; line-height: 1.4;">
-              ${escapeHtml(c.issue_title || 'Civic Issue #' + c.linked_entity_id)}
+              ${escapeHtml(c.headline)}
             </h4>
           </div>
 
@@ -295,26 +312,26 @@ function renderFeedView(container, campaigns) {
                 <div style="font-size: 10px; color: #94a3b8;">Views</div>
               </div>
               <div>
-                <div style="font-size: 14px; font-weight: 800; color: #38bdf8;">${metrics.issue_clicks}</div>
+                <div style="font-size: 14px; font-weight: 800; color: #38bdf8;">${metrics.clicks}</div>
                 <div style="font-size: 10px; color: #94a3b8;">Issue Taps</div>
               </div>
               <div>
-                <div style="font-size: 14px; font-weight: 800; color: #a78bfa;">${metrics.shares_initiated}</div>
+                <div style="font-size: 14px; font-weight: 800; color: #a78bfa;">${metrics.shares}</div>
                 <div style="font-size: 10px; color: #94a3b8;">Shares Init.</div>
               </div>
               <div>
-                <div style="font-size: 14px; font-weight: 800; color: #34d399;">${metrics.participation}</div>
-                <div style="font-size: 10px; color: #94a3b8;">Actions</div>
+                <div style="font-size: 14px; font-weight: 800; color: #34d399;">${metrics.upvotes}</div>
+                <div style="font-size: 10px; color: #94a3b8;">Upvotes</div>
               </div>
             </div>
           </div>
 
           <!-- Actions Bar -->
           <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <button class="btn btn-primary buzz-view-issue-btn" data-campaign="${c.campaign_id}" data-issue="${c.linked_entity_id}"
+            ${c.linked_entity_id ? `<button class="btn btn-primary buzz-view-issue-btn" data-campaign="${c.campaign_id}" data-issue="${c.linked_entity_id}"
                     style="flex: 1; font-size: 12px; padding: 8px 12px; font-weight: 600; min-width: 100px;">
               🔍 View Issue
-            </button>
+            </button>` : ''}
             <button class="btn btn-secondary buzz-share-btn" data-campaign="${c.campaign_id}" data-issue="${c.linked_entity_id}"
                     style="font-size: 12px; padding: 8px 12px;">
               🔗 Share
@@ -349,8 +366,8 @@ function attachFeedActionEvents() {
       const campaignId = btn.getAttribute('data-campaign');
       const issueId = btn.getAttribute('data-issue');
       apiRequest('POST', `/meme/campaigns/${campaignId}/event`, {
-        event_type: 'issue_click',
-        session_key: getSessionKey(),
+        event_type: 'click',
+        session_id: getSessionKey(),
       }).catch(() => {});
       navigate(`/entities/${issueId}?campaign_id=${campaignId}`);
     });
@@ -362,8 +379,8 @@ function attachFeedActionEvents() {
       const shareUrl = `${window.location.origin}/buzz?campaignId=${campaignId}`;
 
       apiRequest('POST', `/meme/campaigns/${campaignId}/event`, {
-        event_type: 'share_initiated',
-        session_key: getSessionKey(),
+        event_type: 'share',
+        session_id: getSessionKey(),
       }).catch(() => {});
 
       if (navigator.clipboard) {
@@ -400,6 +417,54 @@ function attachFeedActionEvents() {
       document.getElementById('buzz-report-modal').style.display = 'flex';
     });
   });
+}
+
+function renderReviewQueueView(container, campaigns) {
+  if (!campaigns.length) {
+    container.innerHTML = '<div class="alert alert-info">No Civic Buzz posts are awaiting review.</div>';
+    return;
+  }
+
+  container.innerHTML = campaigns.map((campaign) => `
+    <article style="display:grid;grid-template-columns:minmax(180px,300px) 1fr;gap:20px;padding:18px;margin-bottom:16px;border:1px solid rgba(255,255,255,.12);border-radius:14px;background:#1e293b;color:#fff;">
+      <img src="${escapeHtml(campaign.photo_url)}" alt="Submitted civic issue photo" style="width:100%;max-height:300px;object-fit:cover;border-radius:10px;" />
+      <div>
+        <div style="font-size:12px;color:#94a3b8;">${escapeHtml(campaign.category)} · ${escapeHtml(campaign.locality)} · ${escapeHtml(campaign.caption_source)}</div>
+        <h3>${escapeHtml(campaign.headline)}</h3>
+        <p>${escapeHtml(campaign.caption)}</p>
+        <p><strong>Deterministic safety:</strong> <code>${escapeHtml(JSON.stringify(campaign.deterministic_result))}</code></p>
+        <p><strong>AI safety:</strong> <code>${escapeHtml(JSON.stringify(campaign.ai_safety_result))}</code></p>
+        ${campaign.safety_unavailable ? '<div class="alert alert-warning">A safety check is unavailable. This post is flagged for moderator review and is not automatically approved.</div>' : ''}
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-primary buzz-review-publish" data-campaign="${campaign.campaign_id}">Approve and publish</button>
+          <button type="button" class="btn btn-secondary buzz-review-reject" data-campaign="${campaign.campaign_id}">Reject</button>
+        </div>
+      </div>
+    </article>
+  `).join('');
+
+  container.querySelectorAll('.buzz-review-publish').forEach((button) => {
+    button.addEventListener('click', async () => {
+      await moderateCampaign(button.dataset.campaign, 'published');
+    });
+  });
+  container.querySelectorAll('.buzz-review-reject').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const reason = window.prompt('Reason for rejection (required):')?.trim();
+      if (!reason) return;
+      await moderateCampaign(button.dataset.campaign, 'rejected', reason);
+    });
+  });
+}
+
+async function moderateCampaign(campaignId, to_status, reason) {
+  try {
+    await apiRequest('POST', `/meme/campaigns/${campaignId}/transition`, { to_status, reason });
+    toastSuccess(to_status === 'published' ? 'Post approved and published.' : 'Post rejected with feedback for its author.');
+    await loadCurrentTab();
+  } catch (err) {
+    toastError(err.message || 'Campaign moderation failed.');
+  }
 }
 
 function renderMyMemesView(container, campaigns) {

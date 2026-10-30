@@ -24,6 +24,12 @@ let state = {
   step: 1,
   issueId: null,
   issue: null,
+  config: null,
+  myIssues: [],
+  category: '',
+  locality: '',
+  photoFile: null,
+  photoPreviewUrl: null,
   eligibility: null,
   templateType: null,
   aiOptions: [],
@@ -44,17 +50,30 @@ export async function renderMemeStudio({ issueId }) {
   app.innerHTML = renderLayout(`
     <div class="page-header mb-4">
       <div class="topbar-breadcrumb mb-2">
-        <a href="/entities/${issueId}" class="text-link">? Back to Issue</a>
+        ${issueId ? `<a href="/entities/${issueId}" class="text-link">Back to Issue</a>` : '<a href="/buzz" class="text-link">Back to Civic Buzz</a>'}
       </div>
-      <h1>?? Civic Meme Studio</h1>
-      <p class="text-secondary" style="margin-top:4px;">Turn a real civic issue into relatable awareness content. All campaigns require moderator approval.</p>
+      <h1>Civic Buzz Studio</h1>
+      <p class="text-secondary" style="margin-top:4px;">Create civic awareness content. Every post requires moderator approval before publication.</p>
     </div>
     <div id="meme-studio-body"></div>
-  `, 'Civic Meme Studio');
+  `, 'Civic Buzz Studio');
   attachLayoutEvents();
 
   // Reset state for new studio session
-  state = { ...state, step: 1, issueId: Number(issueId), issue: null, eligibility: null };
+  if (state.photoPreviewUrl) URL.revokeObjectURL(state.photoPreviewUrl);
+  state = {
+    ...state,
+    step: 1,
+    issueId: issueId ? Number(issueId) : null,
+    issue: null,
+    eligibility: null,
+    config: null,
+    myIssues: [],
+    category: '',
+    locality: '',
+    photoFile: null,
+    photoPreviewUrl: null,
+  };
 
   await loadIssueAndCheckEligibility(issueId);
 }
@@ -64,20 +83,22 @@ async function loadIssueAndCheckEligibility(issueId) {
   body.innerHTML = '<div class="loading-overlay"><div class="spinner spinner-lg"></div></div>';
 
   try {
-    const [issueRes, eligRes] = await Promise.all([
-      apiRequest('GET', `/entities/${issueId}`),
-      apiRequest('GET', `/meme/eligibility/${issueId}`),
+    const [configRes, issueRes] = await Promise.all([
+      apiRequest('GET', '/meme/config'),
+      apiRequest('GET', '/meme/my-issues'),
     ]);
-
-    state.issue = issueRes.data;
-    state.eligibility = eligRes.data;
-
-    if (!state.eligibility.eligible) {
-      renderBlocked(body, state.eligibility.reason);
-      return;
+    state.config = configRes.data;
+    state.myIssues = issueRes.data || [];
+    if (issueId) {
+      state.issue = state.myIssues.find((issue) => Number(issue.issue_id) === Number(issueId)) || null;
+      if (!state.issue) {
+        renderBlocked(body, 'Only your own approved issues can be linked.');
+        return;
+      }
+      state.category = state.issue.category;
+      state.locality = state.issue.locality;
     }
-
-    renderStep1(body);
+    renderUploadStep(body);
   } catch (err) {
     body.innerHTML = `<div class="alert alert-error">${escapeHtml(err.message || 'Failed to load issue.')}</div>`;
   }
@@ -96,6 +117,100 @@ function renderBlocked(body, reason) {
   `;
 }
 
+function renderUploadStep(body) {
+  const categories = state.config.categories || [];
+  const localities = state.config.localities || [];
+  const initialIssueId = state.issue?.issue_id || '';
+  body.innerHTML = `
+    <div class="ck-studio-wizard" style="max-width:720px;">
+      <h2 class="mb-2">Start a Civic Buzz post</h2>
+      <p class="text-secondary mb-4">Add an issue photo, choose its category and locality, then send it for moderator review.</p>
+      <label class="form-label" for="buzz-photo">Photo</label>
+      <input id="buzz-photo" class="form-input mb-3" type="file" accept="image/*" capture="environment" />
+      <div id="buzz-photo-preview" class="mb-4"></div>
+      <label class="form-label" for="buzz-category">Category</label>
+      <select id="buzz-category" class="form-input mb-3" ${initialIssueId ? 'disabled' : ''}>
+        <option value="">Choose a category</option>
+        ${categories.map((category) => `<option value="${escapeHtml(category)}" ${category === state.category ? 'selected' : ''}>${escapeHtml(category)}</option>`).join('')}
+      </select>
+      <label class="form-label" for="buzz-locality">Locality</label>
+      <select id="buzz-locality" class="form-input mb-3" ${initialIssueId ? 'disabled' : ''}>
+        <option value="">Unassigned</option>
+        ${localities.map((locality) => `<option value="${escapeHtml(locality)}" ${locality === state.locality ? 'selected' : ''}>${escapeHtml(locality)}</option>`).join('')}
+      </select>
+      <label class="form-label" for="buzz-linked-issue">Link one of my approved issues (optional)</label>
+      <select id="buzz-linked-issue" class="form-input mb-3">
+        <option value="">Standalone post</option>
+        ${state.myIssues.map((issue) => `<option value="${issue.issue_id}" ${Number(issue.issue_id) === Number(initialIssueId) ? 'selected' : ''}>${escapeHtml(issue.name)} (${escapeHtml(issue.category)})</option>`).join('')}
+      </select>
+      <div id="buzz-category-feedback" aria-live="polite" class="mb-3"></div>
+      <button id="buzz-details-next" class="btn btn-primary" type="button" disabled onclick="window._memeStartBuzz()">Continue</button>
+    </div>
+  `;
+
+  const photoInput = document.getElementById('buzz-photo');
+  photoInput.addEventListener('change', () => {
+    const file = photoInput.files?.[0] || null;
+    state.photoFile = file;
+    if (state.photoPreviewUrl) URL.revokeObjectURL(state.photoPreviewUrl);
+    state.photoPreviewUrl = file ? URL.createObjectURL(file) : null;
+    document.getElementById('buzz-photo-preview').innerHTML = state.photoPreviewUrl
+      ? `<img src="${state.photoPreviewUrl}" alt="Selected photo preview" style="max-width:100%;max-height:320px;border-radius:12px;" />`
+      : '';
+    updateBuzzDetailsAvailability();
+  });
+
+  document.getElementById('buzz-category').addEventListener('change', (event) => {
+    state.category = event.target.value;
+    updateBuzzDetailsAvailability();
+  });
+  document.getElementById('buzz-locality').addEventListener('change', (event) => {
+    state.locality = event.target.value || 'Unassigned';
+  });
+  document.getElementById('buzz-linked-issue').addEventListener('change', (event) => {
+    const selectedIssue = state.myIssues.find((issue) => String(issue.issue_id) === event.target.value) || null;
+    state.issue = selectedIssue;
+    state.issueId = selectedIssue?.issue_id || null;
+    if (selectedIssue) {
+      state.category = selectedIssue.category;
+      state.locality = selectedIssue.locality || 'Unassigned';
+      document.getElementById('buzz-category').value = state.category;
+      document.getElementById('buzz-locality').value = state.locality === 'Unassigned' ? '' : state.locality;
+    }
+    document.getElementById('buzz-category').disabled = Boolean(selectedIssue);
+    document.getElementById('buzz-locality').disabled = Boolean(selectedIssue);
+    updateBuzzDetailsAvailability();
+  });
+
+  function updateBuzzDetailsAvailability() {
+    const category = state.category.toLowerCase();
+    const blocked = state.config.no_meme_categories.some((item) => category.includes(item.toLowerCase()));
+    const humorAllowed = state.config.humor_allowed_categories.includes(category);
+    const message = blocked
+      ? `<div class="alert alert-error">This category cannot be used for Civic Buzz. Please use the <a href="/entities/new" class="text-link">Grievance form</a>.</div>`
+      : state.config.safety_sensitive_categories.some((item) => category.includes(item.toLowerCase()))
+        ? '<div class="alert alert-warning">Only neutral Awareness and CTA templates are available for this safety-sensitive category.</div>'
+        : !humorAllowed && category
+          ? '<div class="alert alert-info">Only Awareness and CTA templates are available for this category.</div>'
+          : '';
+    document.getElementById('buzz-category-feedback').innerHTML = message;
+    document.getElementById('buzz-details-next').disabled = !state.photoFile || !category || blocked;
+  }
+
+  window._memeStartBuzz = () => {
+    const category = state.category.toLowerCase();
+    const blocked = state.config.no_meme_categories.some((item) => category.includes(item.toLowerCase()));
+    if (!state.photoFile || !category || blocked) return;
+    const isSensitive = state.config.safety_sensitive_categories.some((item) => category.includes(item.toLowerCase()));
+    const humorAllowed = state.config.humor_allowed_categories.includes(category);
+    state.eligibility = {
+      eligible: true,
+      templateTypes: isSensitive ? ['awareness', 'cta'] : humorAllowed ? ['relatable', 'awareness', 'cta'] : ['awareness', 'cta'],
+    };
+    renderStep1(body);
+  };
+}
+
 // -- Step 1: Pick template --------------------------------------------------
 function renderStep1(body) {
   state.step = 1;
@@ -111,7 +226,7 @@ function renderStep1(body) {
       name: 'Awareness',
       desc: 'Factual, informative content that raises visibility for an issue. Facts from the actual report only.',
     },
-    call_to_action: {
+    cta: {
       icon: '??',
       name: 'Call to Action',
       desc: 'Energizing content that encourages citizens to report, support, or take action together.',
@@ -120,7 +235,7 @@ function renderStep1(body) {
 
   body.innerHTML = `
     <div class="ck-studio-wizard">
-      ${renderStepIndicator(1)}
+      ${renderStepIndicator(2)}
       <h2 class="mb-2">Choose a Template</h2>
       <p class="text-secondary mb-4">Pick the tone that best fits this issue.</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;max-width:720px;">
@@ -149,7 +264,7 @@ async function renderStep2(body) {
   state.step = 2;
   body.innerHTML = `
     <div class="ck-studio-wizard">
-      ${renderStepIndicator(2)}
+      ${renderStepIndicator(3)}
       <h2 class="mb-2">Caption Your Meme</h2>
       <div class="loading-overlay" style="position:static;height:80px;"><div class="spinner"></div></div>
       <p class="text-secondary">Generating AI caption suggestions...</p>
@@ -159,8 +274,10 @@ async function renderStep2(body) {
   let aiResult = { options: [], ai_unavailable: false };
   try {
     const res = await apiRequest('POST', '/meme/captions', {
-      issue_id: state.issueId,
-      template_type: state.templateType,
+      issue_id: state.issueId || null,
+      category: state.category,
+      locality: state.locality,
+      template: state.templateType,
     });
     aiResult = res.data;
   } catch (err) {
@@ -185,7 +302,6 @@ async function renderStep2(body) {
           <button class="ck-caption-option" onclick="window._memeSelectOption(${i})" id="capopt-${i}" style="display:block;width:100%;text-align:left;padding:12px 16px;margin-bottom:8px;border-radius:8px;border:2px solid var(--border-color);background:var(--bg-secondary);cursor:pointer;">
             <div style="font-weight:700;font-size:0.9rem;color:var(--text-primary);">${escapeHtml(opt.headline)}</div>
             <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px;">${escapeHtml(opt.caption)}</div>
-            <div style="font-size:0.7rem;color:var(--text-muted);margin-top:4px;">Humor: ${opt.humor_level}</div>
           </button>
         `).join('')}
       </div>
@@ -194,7 +310,7 @@ async function renderStep2(body) {
 
   body.innerHTML = `
     <div class="ck-studio-wizard" style="max-width:720px;">
-      ${renderStepIndicator(2)}
+      ${renderStepIndicator(3)}
       <h2 class="mb-2">Caption Your Meme</h2>
       ${aiUnavailableNotice}
       ${optionsHtml}
@@ -282,7 +398,7 @@ async function renderStep2(body) {
 
     try {
       const res = await apiRequest('POST', '/meme/safety-check', {
-        headline, caption, issue_id: state.issueId,
+        headline, caption, issue_id: state.issueId, category: state.category, template: state.templateType,
       });
       state.safetyResult = res.data;
 
@@ -296,12 +412,19 @@ async function renderStep2(body) {
         const aiUnavailable = res.data.ai_safety?.status === 'unavailable';
         const msg = violations.map((v) => `<li>${escapeHtml(v)}</li>`).join('');
         const notice = aiUnavailable
-          ? '<li style="color:var(--warning);">?? AI safety check unavailable � moderator will review manually.</li>'
+          ? '<li style="color:var(--warning);">AI safety check unavailable. This post will be flagged for moderator review.</li>'
           : '';
-        setSafetyFeedback(`<div class="alert alert-error" style="margin:0;padding:8px 12px;"><ul style="margin:0;padding-left:18px;">${msg}${notice}</ul></div>`, false);
+        const deterministicPassed = res.data.deterministic?.passed === true;
+        const feedbackClass = deterministicPassed && aiUnavailable ? 'alert-warning' : 'alert-error';
+        setSafetyFeedback(`<div class="alert ${feedbackClass}" style="margin:0;padding:8px 12px;"><ul style="margin:0;padding-left:18px;">${msg}${notice}</ul></div>`, deterministicPassed && aiUnavailable);
       }
     } catch (err) {
-      setSafetyFeedback('<span style="color:var(--warning);">?? Safety check temporarily unavailable.</span>', false);
+      state.safetyResult = {
+        passed: false,
+        deterministic: { passed: false, violations: ['Safety check unavailable.'] },
+        ai_safety: { safe: false, violations: [], status: 'unavailable' },
+      };
+      setSafetyFeedback('<span style="color:var(--warning);">Safety check unavailable. This post will be flagged for moderator review.</span>', true);
     }
   }
 
@@ -337,15 +460,14 @@ function renderStep3(body) {
   state.step = 3;
   body.innerHTML = `
     <div class="ck-studio-wizard" style="max-width:600px;">
-      ${renderStepIndicator(3)}
+      ${renderStepIndicator(4)}
       <h2 class="mb-2">Photo Attestation</h2>
       <p class="text-secondary mb-4">
-        Your meme will use the photo from the original issue report.
-        Before proceeding, please confirm the following:
+        Confirm that you have permission to share this photo.
       </p>
 
       <div class="alert alert-info mb-4" style="font-size:0.875rem;line-height:1.6;">
-        <strong>Your photo will be visible to the public.</strong>
+        <strong>Your photo will be visible to the public after moderator approval.</strong>
         Please ensure it does not show:
         <ul style="margin:8px 0 0 18px;">
           <li>Identifiable faces of individuals</li>
@@ -359,8 +481,7 @@ function renderStep3(body) {
         <input type="checkbox" id="attestation-checkbox" style="margin-top:2px;width:18px;height:18px;flex-shrink:0;"
           onchange="window._memeAttestCheck(this.checked)" />
         <span style="font-size:0.875rem;line-height:1.5;">
-          <strong>I confirm that the issue photo does not show identifiable faces, vehicle number plates,
-          or private property � or I have obtained consent from anyone shown.</strong>
+          <strong>No identifiable faces, number plates, or private property in my photo, or I have consent.</strong>
         </span>
       </label>
 
@@ -396,18 +517,16 @@ function renderStep3(body) {
 function renderStep4(body) {
   state.step = 4;
 
-  // Determine photo URL from issue files
-  let photoUrl = null;
-  // We would need to fetch files for the issue; for now use null (background gradient)
+  const photoUrl = state.photoPreviewUrl;
 
   const memeHtml = renderMemeCard({
     template_type: state.templateType,
     headline: state.editedHeadline,
     caption: state.editedCaption,
-    locality: state.issue?.area || 'Your Locality',
-    category: state.issue?.entityType?.name || 'Civic Issue',
+    locality: state.locality || 'Unassigned',
+    category: state.category,
     photoUrl,
-    shareLink: `/entities/${state.issueId}`,
+    shareLink: state.issueId ? `/entities/${state.issueId}` : null,
   });
 
   const safetyNote = state.safetyResult?.ai_safety?.status === 'unavailable'
@@ -416,7 +535,7 @@ function renderStep4(body) {
 
   body.innerHTML = `
     <div class="ck-studio-wizard">
-      ${renderStepIndicator(4)}
+      ${renderStepIndicator(5)}
       <h2 class="mb-2">Preview Your Meme</h2>
       <p class="text-secondary mb-3">This is how your meme will appear in Civic Buzz after approval.</p>
 
@@ -436,7 +555,7 @@ function renderStep4(body) {
           </div>
           <div class="mb-3">
             <div style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Linked Issue</div>
-            <a href="/entities/${state.issueId}" class="text-link">#${state.issueId} � ${escapeHtml(state.issue?.name || '')}</a>
+            ${state.issueId ? `<a href="/entities/${state.issueId}" class="text-link">#${state.issueId} - ${escapeHtml(state.issue?.name || '')}</a>` : '<span>Standalone civic highlight</span>'}
           </div>
           <div class="alert alert-info" style="font-size:0.8rem;margin-top:12px;">
             This meme will be submitted to a moderator before being published. You can check its status in "My Memes".
@@ -467,7 +586,9 @@ function renderStep4(body) {
       // Step 1: Create campaign
       const createRes = await apiRequest('POST', '/meme/campaigns', {
         issue_id: state.issueId,
-        template_type: state.templateType,
+        category: state.category,
+        locality: state.locality,
+        template: state.templateType,
         headline: state.editedHeadline,
         caption: state.editedCaption,
         caption_source: state.captionSource,
@@ -477,7 +598,12 @@ function renderStep4(body) {
 
       const campaignId = createRes.data.campaign.entity_id;
 
-      // Step 2: Submit for moderation
+      const photoForm = new FormData();
+      photoForm.append('photo', state.photoFile);
+      await apiRequest('POST', `/meme/campaigns/${campaignId}/photo`, null, {
+        body: photoForm,
+        headers: { 'X-Requested-With': 'ck-web' },
+      });
       await apiRequest('POST', `/meme/campaigns/${campaignId}/submit`);
 
       renderStep5(body, campaignId);
@@ -494,7 +620,7 @@ function renderStep5(body, campaignId) {
   state.step = 5;
   body.innerHTML = `
     <div class="ck-studio-wizard" style="text-align:center;max-width:520px;margin:0 auto;">
-      ${renderStepIndicator(5)}
+      ${renderStepIndicator(6)}
       <div style="font-size:3rem;margin-bottom:16px;">??</div>
       <h2 class="mb-2">Submitted for Review!</h2>
       <p class="text-secondary mb-4">
@@ -512,7 +638,7 @@ function renderStep5(body, campaignId) {
       </div>
       <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
         <a href="/buzz" class="btn btn-secondary">View Civic Buzz</a>
-        <a href="/entities/${state.issueId}" class="btn btn-primary">Back to Issue ?</a>
+        ${state.issueId ? `<a href="/entities/${state.issueId}" class="btn btn-primary">Back to Issue</a>` : ''}
       </div>
     </div>
   `;
@@ -521,11 +647,12 @@ function renderStep5(body, campaignId) {
 // -- Shared UI helpers --------------------------------------------------------
 function renderStepIndicator(currentStep) {
   const steps = [
-    { n: 1, label: 'Template' },
-    { n: 2, label: 'Caption' },
-    { n: 3, label: 'Attestation' },
-    { n: 4, label: 'Preview' },
-    { n: 5, label: 'Done' },
+    { n: 1, label: 'Photo and details' },
+    { n: 2, label: 'Template' },
+    { n: 3, label: 'Caption' },
+    { n: 4, label: 'Attestation' },
+    { n: 5, label: 'Preview' },
+    { n: 6, label: 'Done' },
   ];
   return `
     <div class="ck-studio-steps" style="display:flex;align-items:center;gap:0;margin-bottom:28px;flex-wrap:wrap;">

@@ -11,6 +11,7 @@
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const prisma = require('../db');
+const { GEMINI_MODEL } = require('./aiSuggestion');
 
 function cleanJsonResponseText(text) {
   if (!text) return '';
@@ -25,7 +26,11 @@ function isValidCaptionSchema(data) {
   if (!data || typeof data !== 'object') return false;
   if (!Array.isArray(data.options)) return false;
   if (typeof data.uses_only_provided_facts !== 'boolean') return false;
-  return true;
+  if (data.options.length !== 0 && data.options.length !== 3) return false;
+  if (data.options.length === 0 && (typeof data.reason !== 'string' || !data.reason.trim())) return false;
+  return data.options.every((option) =>
+    option && typeof option.headline === 'string' && typeof option.caption === 'string'
+  );
 }
 
 /**
@@ -37,6 +42,9 @@ function isValidCaptionSchema(data) {
  * @returns {{ options: Array, uses_only_provided_facts: boolean, ai_unavailable: boolean, logId: number|null }}
  */
 async function generateCaptions(entityIdOrData, templateType, userId) {
+  if (!entityIdOrData || typeof entityIdOrData !== 'object') {
+    throw new Error('Caption inputs must contain only category, locality, and an optional linked issue description.');
+  }
   let category = 'Civic Issue';
   let locality = 'your locality';
   let issueDesc = 'Civic issue in neighborhood';
@@ -87,7 +95,7 @@ async function generateCaptions(entityIdOrData, templateType, userId) {
   const templateInstructions = {
     relatable: 'Write in a light, self-deprecating, relatable tone about the citizen\'s own experience with this civic situation. Humor is about the SITUATION, never about people or officials.',
     awareness: 'Write in a clear, factual, informative tone. Include only facts that are present in the provided data. No humor. Focus on raising awareness.',
-    call_to_action: 'Write in an energizing, community-focused tone that encourages citizens to report, support, or take civic action. No blame. No humor. Action-oriented.',
+    cta: 'Write in an energizing, community-focused tone that encourages citizens to report, support, or take civic action. No blame. No humor. Action-oriented.',
   };
 
   const promptText = `
@@ -102,6 +110,8 @@ ${safeFields.length > 0 ? safeFields.join('\n') : '- (No additional details)'}
 TEMPLATE: ${templateType.toUpperCase()}
 TONE INSTRUCTION: ${templateInstructions[templateType] || templateInstructions.awareness}
 
+humor about the situation or the citizen's own experience, never people; never mock, blame, or imply negligence or corruption by any person, official, department, or party; no politics; never target religion, caste, community, gender, region, language, disability, or migrants; no profanity, sexual or violent content; no jokes about injury, death, disease, or disasters; no invented facts or numbers; no real or celebrity names; no copyrighted lines, characters, or meme formats; max 2 emojis; headline up to 60 chars, caption up to 140; if unsafe, return empty options plus a reason. English only.
+
 MANDATORY RULES � violations will cause rejection:
 * Humor (if any) is about the SITUATION or the citizen's own relatable experience. NEVER about people.
 * NEVER mock, blame, name, or imply wrongdoing by any individual, official, government employee, department, political party, or leader.
@@ -110,7 +120,7 @@ MANDATORY RULES � violations will cause rejection:
 * NO profanity, slurs, sexual or violent content. No jokes about injury, death, disease, or disasters.
 * DO NOT invent facts: no numbers, durations, causes, dates, or outcomes not in the provided data.
 * NO real people or celebrity names. NO copyrighted dialogue, lyrics, catchphrases, or character references.
-* Max 1-2 emojis total. Headline max 60 chars. Caption max 140 chars.
+* Max 2 emojis total. Headline max 60 chars. Caption max 140 chars.
 * If safe content is not possible for this topic, return empty options array with a reason field.
 * English only.
 * Reporter identity must never appear. Refer to reporter as "A citizen in ${locality}" if needed.
@@ -129,12 +139,12 @@ Generate exactly 3 caption options. Respond with ONLY a valid JSON object (no ma
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey.trim() === '') {
-    await logCall({ entityId, userId, prompt: promptText, status: 'failed', error: 'GEMINI_API_KEY not configured.' });
+    await logCall({ entityId: targetEntityId, userId, prompt: promptText, status: 'failed', error: 'GEMINI_API_KEY not configured.' });
     return { options: [], uses_only_provided_facts: true, ai_unavailable: true, reason: 'AI service is not configured. Please write your own caption.', logId: null };
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
 
   let rawText = '';
   let parsed = null;
@@ -148,7 +158,7 @@ Generate exactly 3 caption options. Respond with ONLY a valid JSON object (no ma
   } catch (e1) {
     console.warn('[MEME CAPTION] Attempt 1 failed:', e1.message);
     try {
-      const retryPrompt = promptText + '\n\nATTENTION: Return ONLY valid JSON with keys "options" (array of 3) and "uses_only_provided_facts" (boolean).';
+      const retryPrompt = promptText + '\n\nATTENTION: Return ONLY valid JSON with keys "options", "uses_only_provided_facts", and optional "reason".';
       const r2 = await model.generateContent(retryPrompt);
       rawText = r2.response.text();
       parsed = JSON.parse(cleanJsonResponseText(rawText));
@@ -175,14 +185,34 @@ Generate exactly 3 caption options. Respond with ONLY a valid JSON object (no ma
   const cleanedOptions = (parsed.options || []).slice(0, 3).map((opt) => ({
     headline: String(opt.headline || '').substring(0, CAPTION_LIMITS.headlineMaxChars),
     caption: String(opt.caption || '').substring(0, CAPTION_LIMITS.captionMaxChars),
-    humor_level: ['light', 'none'].includes(opt.humor_level) ? opt.humor_level : 'none',
   }));
+
+  if (cleanedOptions.length !== 0 && cleanedOptions.length !== 3) {
+    return {
+      options: [],
+      uses_only_provided_facts: false,
+      ai_unavailable: false,
+      reason: 'AI returned an incomplete caption set. Please write your own caption.',
+      logId,
+    };
+  }
+  if (!parsed.uses_only_provided_facts) {
+    return {
+      options: [],
+      uses_only_provided_facts: false,
+      ai_unavailable: false,
+      reason: parsed.reason || 'AI could not confirm these captions use only provided facts.',
+      logId,
+    };
+  }
 
   return {
     options: cleanedOptions,
     uses_only_provided_facts: Boolean(parsed.uses_only_provided_facts),
     ai_unavailable: false,
-    reason: parsed.reason || null,
+    reason: cleanedOptions.length === 0
+      ? parsed.reason || 'AI could not safely suggest captions for this topic.'
+      : parsed.reason || null,
     logId,
   };
 }
@@ -194,7 +224,7 @@ async function logCall({ entityId, userId, prompt, response, status, error }) {
         entity_id: entityId ? Number(entityId) : null,
         requested_by_user_id: userId ? Number(userId) : null,
         provider: 'gemini',
-        model: 'gemini-1.5-flash',
+        model: GEMINI_MODEL,
         prompt: (prompt || '').substring(0, 5000),
         response: (response || null),
         status: status || 'completed',

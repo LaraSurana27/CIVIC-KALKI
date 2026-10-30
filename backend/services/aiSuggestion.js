@@ -5,6 +5,7 @@
 
 const prisma = require('../db');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const GEMINI_MODEL = 'gemini-3.6-flash';
 
 /**
  * Clean raw model response by removing markdown code block fences if present.
@@ -139,7 +140,7 @@ The JSON object must match this exact schema:
         entity_id: Number(entityId),
         requested_by_user_id: requestedByUserId ? Number(requestedByUserId) : null,
         provider: 'gemini',
-        model: 'gemini-1.5-flash',
+        model: GEMINI_MODEL,
         prompt: promptText,
         response: null,
         status: 'failed',
@@ -155,7 +156,7 @@ The JSON object must match this exact schema:
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
+  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
 
   let rawResponseText = '';
   let parsedReport = null;
@@ -209,7 +210,7 @@ The JSON object must match this exact schema:
       entity_id: Number(entityId),
       requested_by_user_id: requestedByUserId ? Number(requestedByUserId) : null,
       provider: 'gemini',
-      model: 'gemini-3.6-flash',
+      model: GEMINI_MODEL,
       prompt: promptText,
       response: rawResponseText || null,
       status: parsedReport ? 'completed' : 'failed',
@@ -231,5 +232,6 @@ The JSON object must match this exact schema:
 }
 
 module.exports = {
+  GEMINI_MODEL,
   generateIntelligenceReport,
 };
