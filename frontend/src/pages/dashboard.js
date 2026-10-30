@@ -5,6 +5,7 @@ import { toastError } from '../components/toast.js';
 import { navigate } from '../router.js';
 import { getCapabilityPresentation, capabilityIcon, formatStatusLabel } from '../utils/terminology.js';
 import { renderAgentChatBar, attachAgentChatBarEvents } from '../components/AgentChatBar.js';
+import { renderCivicBuzzCardHtml, initCivicBuzzCarousel } from '../components/CivicBuzzCarousel.js';
 
 function escapeHtml(str) {
   return String(str || '').replace(/[&<>"']/g, c =>
@@ -463,42 +464,8 @@ async function renderCitizenDash(container, user, metaData) {
           </a>
         </div>
 
-        <!-- Civic Spotlight -->
-        <div class="ck-rx-sidebar-panel">
-          <div class="ck-rx-sidebar-heading">Civic Spotlight</div>
-          <div class="ck-rx-spotlight-card">
-            <div class="ck-rx-spotlight-tag">Featured Movement</div>
-            <div class="ck-rx-spotlight-title">FC Road Pedestrian Safety & Crossing</div>
-            <div class="ck-rx-spotlight-desc">Citizens organized 120 verified signatures to install a raised crosswalk near Fergusson College.</div>
-            <div class="ck-rx-spotlight-stats">
-              <span>${DSVG.usersSm} 42 supporters</span>
-              <span>·</span>
-              <span>Ward 14</span>
-            </div>
-            <a href="/entities" class="btn btn-primary btn-sm" style="width:100%; text-align:center; margin-top:8px;">
-              Support Initiative
-            </a>
-          </div>
-        </div>
-
-        <!-- Civic Buzz -->
-        <div class="ck-rx-sidebar-panel">
-          <div class="ck-rx-sidebar-heading">Civic Buzz</div>
-          <div class="ck-rx-spotlight-card" style="background:linear-gradient(135deg, rgba(251,146,60,0.12), rgba(239,68,68,0.10)); border-color: rgba(251,146,60,0.35);">
-            <div class="ck-rx-spotlight-tag" style="background:rgba(251,146,60,0.12); color:#f59e0b; border-color:rgba(251,146,60,0.25);">Community Campaign</div>
-            <div class="ck-rx-spotlight-title">Turn civic issues into relatable awareness.</div>
-            <div class="ck-rx-spotlight-desc">Share verified community stories, memes, and awareness posts that keep real issues visible and accountable.</div>
-            <div class="ck-rx-spotlight-stats">
-              <span>${DSVG.flame} 12 live posts</span>
-              <span>·</span>
-              <span>Moderator reviewed</span>
-            </div>
-            <a href="/buzz" class="btn btn-primary btn-sm" style="width:100%; text-align:center; margin-top:8px;">
-              Open Civic Buzz
-            </a>
-          </div>
-        </div>
-
+        <!-- Civic Buzz Gallery Carousel (Rotating/Swipe photo function automatically per 1-2s) -->
+        ${renderCivicBuzzCardHtml()}
         <!-- Activity Overview -->
         <div class="ck-rx-sidebar-panel">
           <div class="ck-rx-sidebar-heading">Activity Snapshot</div>
@@ -528,6 +495,7 @@ async function renderCitizenDash(container, user, metaData) {
   `;
 
   _attachCitizenCockpitEvents(user, myItems);
+  initCivicBuzzCarousel();
 }
 
 // ── Motion Text Quotes for Kinetic Typewriter ─────────────────────────────────

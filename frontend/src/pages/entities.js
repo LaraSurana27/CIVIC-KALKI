@@ -1,6 +1,8 @@
+import { BI } from '../components/CivicBuzzIcons.js';
 import { requireAuth, getUser, getRole } from '../auth.js';
 import { renderLayout, attachLayoutEvents } from '../components/layout.js';
-import { entities as apiEntities } from '../api.js';
+import { entities as apiEntities, buzz } from '../api.js';
+import { openBuzzCreateModal } from '../components/CivicBuzzModal.js';
 import { toastError } from '../components/toast.js';
 import { navigate } from '../router.js';
 import { getCapabilityPresentation, formatStatusLabel } from '../utils/terminology.js';
@@ -131,6 +133,7 @@ export async function renderEntities(params = {}, searchParams = null) {
       </div>
     </div>
     
+    <div id="ck-buzz-drafts-section"></div>
     <div id="entities-content">
       <div class="loading-overlay"><div class="spinner spinner-lg"></div></div>
     </div>
@@ -168,6 +171,7 @@ export async function renderEntities(params = {}, searchParams = null) {
 async function loadEntities() {
   const content = document.getElementById('entities-content');
   if (!content) return;
+  loadBuzzDrafts();
 
   const role = getRole();
   const isCitizen = role === 'citizen';
@@ -293,5 +297,94 @@ async function loadEntities() {
     if (typeof window.civicTranslatePage === 'function') {
       window.civicTranslatePage();
     }
+  }
+}
+
+
+async function loadBuzzDrafts() {
+  const container = document.getElementById('ck-buzz-drafts-section');
+  if (!container) return;
+  const user = getUser();
+  if (!user) {
+    container.innerHTML = '';
+    return;
+  }
+
+  try {
+    const res = await buzz.list({ status: 'draft', limit: 10 });
+    const drafts = res.data || [];
+    if (drafts.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="ck-buzz-drafts-card">
+        <div class="ck-buzz-drafts-header">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="display:inline-flex; align-items:center; color:#ff5a36;">${BI.draft(22, '#ff5a36')}</span>
+            <div>
+              <h3 style="font-size:1.05rem; font-weight:800; color:#0f172a; margin:0;">
+                My Civic Buzz Drafts (${drafts.length})
+              </h3>
+              <p style="font-size:0.78rem; color:#64748b; margin:2px 0 0;">
+                Saved Civic Buzz cards waiting to be published to your community.
+              </p>
+            </div>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" id="ck-draft-new-btn" style="border-radius:999px; font-weight:700;">
+            + Create Buzz
+          </button>
+        </div>
+
+        <div class="ck-buzz-drafts-grid">
+          ${drafts.map(d => `
+            <div class="ck-buzz-draft-item">
+              <div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                  <span class="ck-buzz-badge-pill" style="font-size:0.65rem; display:inline-flex; align-items:center; gap:4px;">
+                    ${d.template === 'initiative' ? `${BI.initiative(12, '#16a34a')} INITIATIVE` : d.template === 'awareness' ? `${BI.awareness(12, '#0284c7')} AWARENESS` : `${BI.flame(12, '#ea580c')} MEME`}
+                  </span>
+                  <span style="font-size:0.7rem; color:#94a3b8;">${new Date(d.created_at).toLocaleDateString()}</span>
+                </div>
+                <div style="font-weight:700; font-size:0.9rem; color:#0f172a; line-height:1.3; margin-bottom:4px;">
+                  "${escapeHtml(d.caption)}"
+                </div>
+                ${d.linked_title ? `
+                  <div style="font-size:0.75rem; color:#64748b;">
+                    Linked: #${d.linked_id} ${escapeHtml(d.linked_title)}
+                  </div>
+                ` : ''}
+              </div>
+
+              <div style="display:flex; justify-content:flex-end; gap:8px; border-top:1px solid #e2e8f0; padding-top:10px;">
+                <button type="button" class="btn btn-primary btn-sm ck-draft-edit-btn" data-id="${d.id}" style="border-radius:999px; font-weight:700;">
+                  Edit / Publish →
+                </button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+
+    container.querySelector('#ck-draft-new-btn')?.addEventListener('click', () => {
+      openBuzzCreateModal(null, () => loadBuzzDrafts());
+    });
+
+    container.querySelectorAll('.ck-draft-edit-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const draftId = Number(btn.getAttribute('data-id'));
+        const draft = drafts.find(d => d.id === draftId);
+        if (draft) {
+          openBuzzCreateModal(draft.linked_id, () => {
+            loadBuzzDrafts();
+            loadEntities();
+          }, draft);
+        }
+      });
+    });
+  } catch (err) {
+    container.innerHTML = '';
   }
 }

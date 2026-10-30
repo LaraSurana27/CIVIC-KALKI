@@ -385,6 +385,12 @@ model User {
   approvalHistory  ApprovalHistory[]      @relation("ApprovalActor")
   aiExecutionLogs  AIExecutionLog[]       @relation("AIRequestedBy")
   campaignEvents   CivicCampaignEvent[]   @relation("CampaignEventUser")
+  buzzPosts    BuzzPost[]    @relation("BuzzAuthor")
+  buzzVotes    BuzzVote[]    @relation("BuzzVoteUser")
+  buzzFollows  BuzzFollow[]  @relation("BuzzFollowUser")
+  buzzComments BuzzComment[] @relation("BuzzCommentUser")
+  buzzEvents   BuzzEvent[]   @relation("BuzzEventUser")
+  buzzReports  BuzzReport[]  @relation("BuzzReportUser")
 }
 
 // ============================================================
@@ -404,4 +410,108 @@ model CivicCampaignEvent {
   user     User?  @relation("CampaignEventUser", fields: [user_id], references: [user_id], onDelete: SetNull)
 
   @@index([campaign_id, event_type])
+}
+
+
+// ============================================================
+// LAYER 7 --- Civic Buzz (posts, votes, follows, comments, events, reports)
+// ============================================================
+
+model BuzzPost {
+  id          Int      @id @default(autoincrement())
+  author_id   Int
+  linked_type String
+  linked_id   Int
+  template    String
+  style       String
+  image_url   String?
+  caption     String
+  cta_text    String?
+  status      String   @default("draft")
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  author   User          @relation("BuzzAuthor",  fields: [author_id], references: [user_id], onDelete: Cascade)
+  votes    BuzzVote[]
+  follows  BuzzFollow[]
+  comments BuzzComment[]
+  events   BuzzEvent[]
+  reports  BuzzReport[]
+
+  @@index([author_id])
+  @@index([linked_type, linked_id])
+  @@index([status, created_at(sort: Desc)])
+  @@map("buzz_posts")
+}
+
+model BuzzVote {
+  id         Int      @id @default(autoincrement())
+  post_id    Int
+  user_id    Int
+  created_at DateTime @default(now())
+
+  post BuzzPost @relation(fields: [post_id], references: [id], onDelete: Cascade)
+  user User     @relation("BuzzVoteUser", fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@unique([post_id, user_id])
+  @@index([post_id])
+  @@map("buzz_votes")
+}
+
+model BuzzFollow {
+  id         Int      @id @default(autoincrement())
+  post_id    Int
+  user_id    Int
+  created_at DateTime @default(now())
+
+  post BuzzPost @relation(fields: [post_id], references: [id], onDelete: Cascade)
+  user User     @relation("BuzzFollowUser", fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@unique([post_id, user_id])
+  @@index([post_id])
+  @@map("buzz_follows")
+}
+
+model BuzzComment {
+  id         Int      @id @default(autoincrement())
+  post_id    Int
+  user_id    Int
+  text       String
+  created_at DateTime @default(now())
+
+  post BuzzPost @relation(fields: [post_id], references: [id], onDelete: Cascade)
+  user User     @relation("BuzzCommentUser", fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@index([post_id, created_at])
+  @@map("buzz_comments")
+}
+
+model BuzzEvent {
+  id         Int      @id @default(autoincrement())
+  post_id    Int
+  user_id    Int?
+  type       String
+  created_at DateTime @default(now())
+
+  post BuzzPost @relation(fields: [post_id], references: [id], onDelete: Cascade)
+  user User?    @relation("BuzzEventUser", fields: [user_id], references: [user_id], onDelete: SetNull)
+
+  @@index([post_id, type])
+  @@index([created_at])
+  @@map("buzz_events")
+}
+
+model BuzzReport {
+  id         Int      @id @default(autoincrement())
+  post_id    Int
+  user_id    Int
+  reason     String?
+  created_at DateTime @default(now())
+
+  post BuzzPost @relation(fields: [post_id], references: [id], onDelete: Cascade)
+  user User     @relation("BuzzReportUser", fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@unique([post_id, user_id])
+  @@index([post_id])
+  @@map("buzz_reports")
 }

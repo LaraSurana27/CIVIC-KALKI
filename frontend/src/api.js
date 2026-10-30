@@ -243,7 +243,28 @@ export const meme = {
 };
 
 // ── Health ────────────────────────────────────────────────────────────────
+
+// ── Civic Buzz (Youth-Powered Civic Conversations) ──────────────────────────
+export const buzz = {
+  list: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request('GET', `/buzz${q ? '?' + q : ''}`);
+  },
+  get:              (id)              => request('GET',   `/buzz/${id}`),
+  create:           (body)            => request('POST',  '/buzz', body),
+  update:           (id, body)        => request('PATCH', `/buzz/${id}`, body),
+  vote:             (id)              => request('POST',  `/buzz/${id}/vote`),
+  follow:           (id)              => request('POST',  `/buzz/${id}/follow`),
+  getComments:      (id, params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request('GET', `/buzz/${id}/comments${q ? '?' + q : ''}`);
+  },
+  addComment:       (id, text)        => request('POST',  `/buzz/${id}/comments`, { text }),
+  logEvent:         (id, type)        => request('POST',  `/buzz/${id}/event`, { type }),
+  getStats:         (id)              => request('GET',   `/buzz/${id}/stats`),
+  generateCaptions: (body)            => request('POST',  '/buzz/captions', body),
+  uploadImage:      (imageData)       => request('POST',  '/buzz/upload-image', { image_data: imageData }),
+  report:           (id, reason)      => request('POST',  `/buzz/${id}/report`, { reason }),
+};
+
 export const health = () => request('GET', '/health');
-
-
-
