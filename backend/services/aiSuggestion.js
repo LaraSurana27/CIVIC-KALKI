@@ -5,6 +5,7 @@
 
 const prisma = require('../db');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const GEMINI_MODEL = 'gemini-3.6-flash';
 
 /**
  * Clean raw model response by removing markdown code block fences if present.
@@ -71,10 +72,26 @@ async function generateIntelligenceReport(entityId, requestedByUserId = null) {
   }
 
   // Build field/value metadata context
-  const fieldSummaries = entity.parameterValues.map((pv) => {
-    const label = pv.parameterMaster?.label || pv.parameterMaster?.field_key || `Param #${pv.parameter_id}`;
-    return `- ${label}: ${pv.value || 'Not provided'}`;
-  });
+  const { canViewLocation } = require('./locationVisibility');
+  let includeLocation = false;
+  if (requestedByUserId) {
+    const requester = await prisma.user.findUnique({
+      where: { user_id: Number(requestedByUserId) },
+      select: { user_id: true, role: true, assignedArea: true },
+    });
+    if (requester && canViewLocation(entity, entity.entityType, requester)) {
+      includeLocation = true;
+    }
+  } else if (canViewLocation(entity, entity.entityType, null)) {
+    includeLocation = true;
+  }
+
+  const fieldSummaries = entity.parameterValues
+    .filter((pv) => includeLocation || pv.parameterMaster?.field_type !== 'location')
+    .map((pv) => {
+      const label = pv.parameterMaster?.label || pv.parameterMaster?.field_key || `Param #${pv.parameter_id}`;
+      return `- ${label}: ${pv.value || 'Not provided'}`;
+    });
 
   const promptText = `
 You are an expert civic governance advisor assisting a Municipal/State Director in evaluating submitted civic entities.
@@ -84,7 +101,7 @@ Analyze the following submitted entity data and provide a highly specific, factu
 Title / Name: ${entity.name}
 Entity Type / Module: ${entity.entityType?.name || 'Generic Entity'}
 Area: ${entity.area || 'Unassigned'}
-Location: ${entity.location || 'Not specified'}
+Location: ${includeLocation ? (entity.location || 'Not specified') : '[Restricted]'}
 Current Status: ${entity.status || 'draft'}
 
 Form Fields & Submitted Parameters:
@@ -123,7 +140,7 @@ The JSON object must match this exact schema:
         entity_id: Number(entityId),
         requested_by_user_id: requestedByUserId ? Number(requestedByUserId) : null,
         provider: 'gemini',
-        model: 'gemini-1.5-flash',
+        model: GEMINI_MODEL,
         prompt: promptText,
         response: null,
         status: 'failed',
@@ -139,7 +156,7 @@ The JSON object must match this exact schema:
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
+  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
 
   let rawResponseText = '';
   let parsedReport = null;
@@ -193,7 +210,7 @@ The JSON object must match this exact schema:
       entity_id: Number(entityId),
       requested_by_user_id: requestedByUserId ? Number(requestedByUserId) : null,
       provider: 'gemini',
-      model: 'gemini-3.6-flash',
+      model: GEMINI_MODEL,
       prompt: promptText,
       response: rawResponseText || null,
       status: parsedReport ? 'completed' : 'failed',
@@ -215,5 +232,6 @@ The JSON object must match this exact schema:
 }
 
 module.exports = {
+  GEMINI_MODEL,
   generateIntelligenceReport,
 };

@@ -1,38 +1,27 @@
 const request = require('supertest');
 const app = require('../index');
 const prisma = require('../db');
-const jwt = require('jsonwebtoken');
-
-const JWT_SECRET = process.env.JWT_SECRET || 'development-secret-change-me';
-
-function generateTestToken(user) {
-  return jwt.sign(
-    {
-      user_id: user.user_id,
-      name: user.name,
-      role: user.role,
-      assigned_area: user.assignedArea || null,
-    },
-    JWT_SECRET,
-    { expiresIn: '1h' }
-  );
-}
+const { createTestUser, cleanupAll, trackEntityId } = require('./helpers/authHelper');
 
 describe('Phase 1 — Metadata-Driven Workflow Engine Tests', () => {
-  let citizenToken, coordinatorAreaToken, directorToken;
+  let citizenHeaders, coordinatorAreaHeaders, directorHeaders;
   let citizenUser, coordinatorAreaUser, directorUser;
   let movementEntityType;
   let customEntityType;
 
   beforeAll(async () => {
-    // 1. Fetch seed users
-    citizenUser = await prisma.user.findFirst({ where: { role: 'citizen' } });
-    coordinatorAreaUser = await prisma.user.findFirst({ where: { role: 'coordinator_area' } });
-    directorUser = await prisma.user.findFirst({ where: { role: 'director' } });
+    // 1. Create ephemeral test users
+    const cit = await createTestUser({ role: 'citizen' });
+    citizenUser = cit.user;
+    citizenHeaders = cit.headers;
 
-    citizenToken = generateTestToken(citizenUser);
-    coordinatorAreaToken = generateTestToken(coordinatorAreaUser);
-    directorToken = generateTestToken(directorUser);
+    const coord = await createTestUser({ role: 'coordinator_area', assignedArea: 'Sector 5' });
+    coordinatorAreaUser = coord.user;
+    coordinatorAreaHeaders = coord.headers;
+
+    const dir = await createTestUser({ role: 'director' });
+    directorUser = dir.user;
+    directorHeaders = dir.headers;
 
     // 2. Fetch Movement EntityType
     movementEntityType = await prisma.entityType.findFirst({ where: { name: 'Movement' } });
@@ -64,6 +53,8 @@ describe('Phase 1 — Metadata-Driven Workflow Engine Tests', () => {
       await prisma.entity.deleteMany({ where: { entity_type_id: customEntityType.entity_type_id } });
       await prisma.entityType.delete({ where: { entity_type_id: customEntityType.entity_type_id } });
     }
+    await cleanupAll();
+    await prisma.$disconnect();
   });
 
   // ── Test 1: Valid metadata transition (draft -> submitted by citizen) ──
@@ -79,7 +70,7 @@ describe('Phase 1 — Metadata-Driven Workflow Engine Tests', () => {
 
     const res = await request(app)
       .post(`/entities/${entity.entity_id}/transition`)
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({ to_status: 'submitted' });
 
     expect(res.status).toBe(200);
@@ -105,7 +96,7 @@ describe('Phase 1 — Metadata-Driven Workflow Engine Tests', () => {
 
     const res = await request(app)
       .post(`/entities/${entity.entity_id}/transition`)
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({ to_status: 'approved' });
 
     expect(res.status).toBe(400);
@@ -130,7 +121,7 @@ describe('Phase 1 — Metadata-Driven Workflow Engine Tests', () => {
 
     const res = await request(app)
       .post(`/entities/${entity.entity_id}/transition`)
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({ to_status: 'approved' });
 
     expect(res.status).toBe(400);
@@ -157,7 +148,7 @@ describe('Phase 1 — Metadata-Driven Workflow Engine Tests', () => {
     // Step 1: Citizen submits (draft -> submitted)
     const step1 = await request(app)
       .post(`/entities/${customEntity.entity_id}/transition`)
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({ to_status: 'submitted' });
     expect(step1.status).toBe(200);
     expect(step1.body.data.status).toBe('submitted');
@@ -165,7 +156,7 @@ describe('Phase 1 — Metadata-Driven Workflow Engine Tests', () => {
     // Step 2: Coordinator verifies (submitted -> verified)
     const step2 = await request(app)
       .post(`/entities/${customEntity.entity_id}/transition`)
-      .set('Authorization', `Bearer ${coordinatorAreaToken}`)
+      .set(coordinatorAreaHeaders)
       .send({ to_status: 'verified' });
     expect(step2.status).toBe(200);
     expect(step2.body.data.status).toBe('verified');
@@ -173,7 +164,7 @@ describe('Phase 1 — Metadata-Driven Workflow Engine Tests', () => {
     // Step 3: Director approves (verified -> approved)
     const step3 = await request(app)
       .post(`/entities/${customEntity.entity_id}/transition`)
-      .set('Authorization', `Bearer ${directorToken}`)
+      .set(directorHeaders)
       .send({ to_status: 'approved' });
     expect(step3.status).toBe(200);
     expect(step3.body.data.status).toBe('approved');
@@ -197,7 +188,7 @@ describe('Phase 1 — Metadata-Driven Workflow Engine Tests', () => {
 
     await request(app)
       .post(`/entities/${entity.entity_id}/transition`)
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({ to_status: 'submitted' });
 
     const history = await prisma.approvalHistory.findFirst({
@@ -227,7 +218,7 @@ describe('Phase 1 — Metadata-Driven Workflow Engine Tests', () => {
 
     await request(app)
       .post(`/entities/${entity.entity_id}/transition`)
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({ to_status: 'submitted' });
 
     const audit = await prisma.auditLog.findFirst({
@@ -257,7 +248,7 @@ describe('Phase 1 — Metadata-Driven Workflow Engine Tests', () => {
 
     const res = await request(app)
       .post(`/entities/${entity.entity_id}/transition`)
-      .set('Authorization', `Bearer ${directorToken}`)
+      .set(directorHeaders)
       .send({ to_status: 'approved' });
 
     expect(res.status).toBe(200);
@@ -294,7 +285,7 @@ describe('Phase 1 — Metadata-Driven Workflow Engine Tests', () => {
 
     const res = await request(app)
       .get(`/entities/${entity.entity_id}/workflow`)
-      .set('Authorization', `Bearer ${citizenToken}`);
+      .set(citizenHeaders);
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);

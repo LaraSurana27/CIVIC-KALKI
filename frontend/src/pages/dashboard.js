@@ -1,6 +1,6 @@
 import { requireAuth, getUser } from '../auth.js';
 import { renderLayout, attachLayoutEvents } from '../components/layout.js';
-import { entities as apiEntities, forms as apiForms } from '../api.js';
+import { entities as apiEntities, forms as apiForms, agent as agentApi } from '../api.js';
 import { toastError } from '../components/toast.js';
 import { navigate } from '../router.js';
 import { getCapabilityPresentation, capabilityIcon, formatStatusLabel } from '../utils/terminology.js';
@@ -204,69 +204,158 @@ async function renderCitizenDash(container, user, metaData) {
     `;
   }).join('');
 
+  // Active tickets for the My Cases Tab Panel
+  const activeTicketsHtml = myItems.length > 0 ? myItems.slice(0, 5).map(item => `
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; margin-bottom:8px;">
+      <div>
+        <div style="font-weight:600; font-size:0.86rem; color:#0f172a;">${escapeHtml(item.name)}</div>
+        <div style="font-size:0.75rem; color:#64748b;">Area: ${escapeHtml(item.area || 'Ward 14')} · #${item.entity_id}</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        ${statusPill(item.status)}
+        <a href="/entities/${item.entity_id}" class="btn btn-secondary btn-sm" style="padding:4px 8px; font-size:0.75rem;">Inspect</a>
+      </div>
+    </div>
+  `).join('') : `
+    <div style="text-align:center; padding:24px; color:#64748b;">
+      <p style="font-size:0.9rem; font-weight:600; margin-bottom:4px;">No active cases filed yet</p>
+      <p style="font-size:0.78rem;">Use the AI Complaint Copilot tab to report your first community issue.</p>
+    </div>
+  `;
+
   // Trending list
   const trendingList = _getCleanTrending();
 
   container.innerHTML = `
-    <!-- ░░ REVENUEX-STYLE MINIMALIST EDITORIAL DASHBOARD ░░ -->
+    <!-- ░░ REVENUEX-STYLE DASHBOARD WITH UNIFIED AGENTIC AI HERO ░░ -->
     <div class="ck-rx-layout">
       <!-- ░░ MAIN CONTENT ░░ -->
       <main class="ck-rx-main">
 
-        <!-- 1. Sleek Search & AI Command Bar (RevenueX Style) -->
-        <div class="ck-rx-search-wrap">
-          <div class="ck-rx-search-bar">
-            <span class="ck-rx-search-icon">${DSVG.search}</span>
-            <input
-              id="ck-hero-input"
-              type="text"
-              autocomplete="off"
-              placeholder="Search data, reports, or ask Kalki AI..."
-              class="ck-rx-search-input"
-              aria-label="Search data, reports, or ask Kalki AI"
-            />
-            <button class="ck-rx-mic-btn" id="ck-hero-mic-btn" title="Voice input">
-              ${DSVG.mic}
-            </button>
-            <button class="ck-rx-send-btn" id="ck-hero-send-btn" title="Submit">
-              ${DSVG.send}
-            </button>
-            <div class="ck-rx-kbd-badge">⌘ + Space</div>
+        <!-- ══════════════════════════════════════════════════════════════
+             1. HIGHLIGHTED AGENTIC AI HERO (DARKSHADE + MINIMAL PILL BAR)
+             Unified Chat Bar + Live Conversation in ONE seamless dark card
+             ══════════════════════════════════════════════════════════════ -->
+        <section class="ck-agent-dark-card" id="ck-dark-cockpit" aria-label="Civic Assistant AI Chat">
+          <div class="ck-dark-ambient"></div>
+          
+          <!-- Header with Avatar, Title, Live Status, Voice Wave Animation, and Reset -->
+          <div class="ck-dark-header">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <div class="ck-dark-avatar">
+                <svg width="17" height="17" fill="none" stroke="white" viewBox="0 0 24 24" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                </svg>
+              </div>
+              <div>
+                <div class="ck-dark-title">
+                  <span>Civic Assistant</span>
+                  <span class="ck-dark-live-badge">
+                    <span class="ck-dark-live-dot"></span>
+                    <span>AI Copilot</span>
+                  </span>
+                </div>
+                <div class="ck-dark-sub">
+                  Report issues · Start initiatives · Check request status
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:10px;">
+              <!-- Signature Voice Wave Animation -->
+              <div class="ck-voice-wave" title="Voice audio frequency monitor">
+                <span class="ck-vbar vbar-1"></span>
+                <span class="ck-vbar vbar-2"></span>
+                <span class="ck-vbar vbar-3"></span>
+                <span class="ck-vbar vbar-4"></span>
+              </div>
+
+              <!-- Reset / New Request Button -->
+              <button type="button" class="ck-dark-reset-btn" id="ck-dark-reset-btn" title="Start fresh conversation">
+                + New Request
+              </button>
+            </div>
           </div>
-        </div>
+
+          <!-- Motion Text Strip (High-End Dark Ticker) -->
+          <div class="ck-dark-motion-strip">
+            <span class="ck-dark-motion-tag">⚡ Live Civic Dispatch:</span>
+            <div class="ck-dark-motion-box">
+              <span>“</span><span id="ck-dark-motion-target">2-foot rim-destroying pothole near FC College main gate</span><span class="ck-dark-cursor"></span><span>”</span>
+            </div>
+          </div>
+
+          <!-- Embedded Conversation Thread (Inside same dark card; visible when messages exist) -->
+          <div id="ck-dark-thread" class="ck-dark-thread" style="display:none;" role="log" aria-live="polite"></div>
+
+          <!-- High-End Minimal Pill Input Bar -->
+          <div class="ck-dark-input-wrap">
+            <!-- File attachment preview chip -->
+            <div id="ck-dark-file-preview" class="ck-dark-file-preview"></div>
+
+            <div class="ck-dark-input-bar">
+              <input type="file" id="ck-dark-file-input" style="display:none;" accept="image/*,.pdf,.doc,.docx,.txt,.csv" />
+              
+              <button type="button" id="ck-dark-attach-btn" class="ck-dark-attach-btn" title="Attach photo proof or document evidence" aria-label="Attach photo">
+                <svg width="17" height="17" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
+              </button>
+
+              <input
+                id="ck-dark-input"
+                class="ck-dark-input"
+                type="text"
+                autocomplete="off"
+                placeholder="Type your request here — e.g. 'garbage not collected near FC road'..."
+                aria-label="Civic assistant message input"
+              />
+
+              <button type="button" id="ck-dark-mic-btn" class="ck-dark-mic-btn" title="Voice dictation" aria-label="Voice dictation">
+                ${DSVG.mic}
+              </button>
+
+              <button type="button" id="ck-dark-send-btn" class="ck-dark-send-btn" title="Send message to AI assistant" aria-label="Send message">
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+                </svg>
+                <span>Send</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Small Cards / Chips (Minimal pills matching original update) -->
+          <div class="ck-dark-suggestions" id="ck-dark-suggestions">
+            <span class="ck-dark-chip" data-text="garbage not collected near FC road for 4 days">
+              🗑️ Garbage complaint
+            </span>
+            <span class="ck-dark-chip" data-text="streetlights are completely broken and dark on our lane">
+              💡 Broken streetlights
+            </span>
+            <span class="ck-dark-chip" data-text="deep dangerous pothole damaged vehicles on the main road">
+              💥 Road pothole
+            </span>
+            <span class="ck-dark-chip" data-text="clean water pipeline leaking heavily onto the street">
+              🚰 Water pipe leak
+            </span>
+            <span class="ck-dark-chip" data-text="I want to start a community cleanliness and greening drive">
+              🌿 Start an initiative
+            </span>
+            <span class="ck-dark-chip" data-text="what is happening with my requests">
+              📋 Check my status
+            </span>
+          </div>
+
+        </section><!-- /.ck-agent-dark-card -->
 
         <!-- 2. Performance / Civic Overview Heading -->
-        <div class="ck-rx-overview-head">
-          <h1 class="ck-rx-overview-title">Civic Overview</h1>
-          <p class="ck-rx-overview-sub">Your reports, ward resolutions, and initiatives — all in one place</p>
+        <div class="ck-rx-overview-head" style="margin-top:8px;">
+          <h2 class="ck-rx-overview-title" style="font-size:1.4rem;">Neighborhood Gateways</h2>
+          <p class="ck-rx-overview-sub">Direct access points to track, propose initiatives, and inspect governance records</p>
         </div>
 
-        <!-- 3. Featured Silk Banner in Brand Orange Hue (Direct RevenueX Homage) -->
-        <div class="ck-rx-featured-card">
-          <div class="ck-rx-featured-silk"></div>
-          <div class="ck-rx-featured-content">
-            <div class="ck-rx-featured-badge">
-              <span class="ck-rx-badge-dot"></span>
-              <span class="ck-rx-badge-icon">${DSVG.sparkle}</span>
-              <span>Kalki AI · Live data</span>
-            </div>
-            
-            <h2 class="ck-rx-featured-heading">Explore your neighborhood</h2>
-            <p class="ck-rx-featured-sub">Dive into trends, active resolutions, and community insights</p>
-
-            <!-- Clean, professional quick action chips -->
-            <div class="ck-rx-chips-row">
-              <button class="ck-rx-chip" data-text="Report an overflowing garbage dump">Overflowing garbage</button>
-              <button class="ck-rx-chip" data-text="Report broken streetlights on my road">Broken streetlight</button>
-              <button class="ck-rx-chip" data-text="Start a community park cleanup drive">Park cleanup</button>
-              <button class="ck-rx-chip" data-text="Who is my ward coordinator?">Who is my coordinator?</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- 4. Core Gateways (Clean Minimalist Cards) -->
+        <!-- 3. Core Gateways (Connect seamlessly to the unified AI cockpit) -->
         <div class="ck-rx-actions-grid">
-          <a href="/agent/chat?message=I+want+to+report+a+problem" class="ck-rx-action-card">
+          <div class="ck-rx-action-card ck-gateway-trigger" data-gateway-prompt="I want to report a problem: " style="cursor:pointer;">
             <div class="ck-rx-action-icon-box">
               ${DSVG.alertTriangle}
             </div>
@@ -275,9 +364,9 @@ async function renderCitizenDash(container, user, metaData) {
               <div class="ck-rx-action-desc">Potholes, waste dumping, dark roads, or water leaks.</div>
             </div>
             <span class="ck-rx-action-arrow">${DSVG.arrowRight}</span>
-          </a>
+          </div>
 
-          <a href="/agent/chat?message=I+want+to+start+an+initiative" class="ck-rx-action-card">
+          <div class="ck-rx-action-card ck-gateway-trigger" data-gateway-prompt="I want to start a community initiative: " style="cursor:pointer;">
             <div class="ck-rx-action-icon-box">
               ${DSVG.lightbulb}
             </div>
@@ -286,9 +375,9 @@ async function renderCitizenDash(container, user, metaData) {
               <div class="ck-rx-action-desc">Rally your neighbors for cleanups, greening & safety.</div>
             </div>
             <span class="ck-rx-action-arrow">${DSVG.arrowRight}</span>
-          </a>
+          </div>
 
-          <a href="/agent/chat?message=I+want+to+contribute+or+volunteer" class="ck-rx-action-card">
+          <div class="ck-rx-action-card ck-gateway-trigger" data-gateway-prompt="I want to contribute skills or volunteer for: " style="cursor:pointer;">
             <div class="ck-rx-action-icon-box">
               ${DSVG.users}
             </div>
@@ -297,9 +386,9 @@ async function renderCitizenDash(container, user, metaData) {
               <div class="ck-rx-action-desc">Share professional skills, sponsor tools, or volunteer.</div>
             </div>
             <span class="ck-rx-action-arrow">${DSVG.arrowRight}</span>
-          </a>
+          </div>
 
-          <a href="/agent/chat?message=I+want+to+understand+a+civic+issue" class="ck-rx-action-card">
+          <div class="ck-rx-action-card ck-gateway-trigger" data-gateway-prompt="I want to understand municipal bylaws, rights, and budget allocations for my ward: " style="cursor:pointer;">
             <div class="ck-rx-action-icon-box">
               ${DSVG.bookOpen}
             </div>
@@ -308,10 +397,10 @@ async function renderCitizenDash(container, user, metaData) {
               <div class="ck-rx-action-desc">Look up municipal bylaws, ward budget allocations & rights.</div>
             </div>
             <span class="ck-rx-action-arrow">${DSVG.arrowRight}</span>
-          </a>
+          </div>
         </div>
 
-        <!-- 5. What's Happening Around You (RevenueX Table / Grid Style) -->
+        <!-- 4. What's Happening Around You (Community Activity Grid) -->
         <div class="ck-rx-section-header">
           <div>
             <h3 class="ck-rx-section-title">Community Activity</h3>
@@ -324,7 +413,7 @@ async function renderCitizenDash(container, user, metaData) {
           ${nearbyCards}
         </div>
 
-        <!-- 6. Trending in your city -->
+        <!-- 5. Trending in your city -->
         <div class="ck-rx-section-header" style="margin-top:36px;">
           <div>
             <h3 class="ck-rx-section-title">Trending in Your City</h3>
@@ -374,7 +463,7 @@ async function renderCitizenDash(container, user, metaData) {
           </a>
         </div>
 
-        <!-- Civic Spotlight (Clean, No Cringe Memes) -->
+        <!-- Civic Spotlight -->
         <div class="ck-rx-sidebar-panel">
           <div class="ck-rx-sidebar-heading">Civic Spotlight</div>
           <div class="ck-rx-spotlight-card">
@@ -388,6 +477,24 @@ async function renderCitizenDash(container, user, metaData) {
             </div>
             <a href="/entities" class="btn btn-primary btn-sm" style="width:100%; text-align:center; margin-top:8px;">
               Support Initiative
+            </a>
+          </div>
+        </div>
+
+        <!-- Civic Buzz -->
+        <div class="ck-rx-sidebar-panel">
+          <div class="ck-rx-sidebar-heading">Civic Buzz</div>
+          <div class="ck-rx-spotlight-card" style="background:linear-gradient(135deg, rgba(251,146,60,0.12), rgba(239,68,68,0.10)); border-color: rgba(251,146,60,0.35);">
+            <div class="ck-rx-spotlight-tag" style="background:rgba(251,146,60,0.12); color:#f59e0b; border-color:rgba(251,146,60,0.25);">Community Campaign</div>
+            <div class="ck-rx-spotlight-title">Turn civic issues into relatable awareness.</div>
+            <div class="ck-rx-spotlight-desc">Share verified community stories, memes, and awareness posts that keep real issues visible and accountable.</div>
+            <div class="ck-rx-spotlight-stats">
+              <span>${DSVG.flame} 12 live posts</span>
+              <span>·</span>
+              <span>Moderator reviewed</span>
+            </div>
+            <a href="/buzz" class="btn btn-primary btn-sm" style="width:100%; text-align:center; margin-top:8px;">
+              Open Civic Buzz
             </a>
           </div>
         </div>
@@ -420,60 +527,397 @@ async function renderCitizenDash(container, user, metaData) {
     </div><!-- /.ck-rx-layout -->
   `;
 
-  _attachEvents();
+  _attachCitizenCockpitEvents(user, myItems);
 }
 
-function _attachEvents() {
-  const input   = document.getElementById('ck-hero-input');
-  const sendBtn = document.getElementById('ck-hero-send-btn');
-  const micBtn  = document.getElementById('ck-hero-mic-btn');
-  if (!input || !sendBtn) return;
+// ── Motion Text Quotes for Kinetic Typewriter ─────────────────────────────────
+const CIVIC_MOTION_QUOTES = [
+  "2-foot rim-destroying pothole near FC College main gate",
+  "6 dead streetlights plunging Model Colony into pitch darkness",
+  "Mount Everest of garbage decomposing outside city school",
+  "High-pressure municipal water pipe bursting on Baner road",
+  "Illegal construction trucks dumping concrete into the riverbed",
+  "Fallen banyan tree branch blocking emergency ambulance route",
+  "Open sewer chamber without any warning cones or safety cover",
+  "Ear-splitting illegal DJ loudspeakers blasting at 2:00 AM",
+];
 
-  document.querySelectorAll('.ck-rx-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      const text = chip.getAttribute('data-text');
-      if (text) {
-        input.value = text;
-        input.focus();
+let _cockpitTypewriterTimer = null;
+let _cockpitQuoteIdx = 0;
+let _cockpitCharIdx = 0;
+let _cockpitIsDeleting = false;
+
+function _attachCitizenCockpitEvents(user, myItems) {
+  let sessionId = 'ck-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9);
+  let isWaiting = false;
+  let pendingFile = null;
+
+  const inputEl    = document.getElementById('ck-dark-input');
+  const sendBtn    = document.getElementById('ck-dark-send-btn');
+  const attachBtn  = document.getElementById('ck-dark-attach-btn');
+  const fileInput  = document.getElementById('ck-dark-file-input');
+  const micBtn     = document.getElementById('ck-dark-mic-btn');
+  const previewBar = document.getElementById('ck-dark-file-preview');
+  const threadEl   = document.getElementById('ck-dark-thread');
+  const resetBtn   = document.getElementById('ck-dark-reset-btn');
+
+  // 1. Kinetic Motion Typewriter
+  function stepTypewriter() {
+    if (_cockpitTypewriterTimer) clearTimeout(_cockpitTypewriterTimer);
+    const target = document.getElementById('ck-dark-motion-target');
+    if (!target) return;
+
+    const currentQuote = CIVIC_MOTION_QUOTES[_cockpitQuoteIdx % CIVIC_MOTION_QUOTES.length];
+
+    if (_cockpitIsDeleting) {
+      _cockpitCharIdx--;
+      target.textContent = currentQuote.substring(0, _cockpitCharIdx);
+      if (_cockpitCharIdx <= 0) {
+        _cockpitIsDeleting = false;
+        _cockpitQuoteIdx++;
+        _cockpitTypewriterTimer = setTimeout(stepTypewriter, 380);
+        return;
       }
+      _cockpitTypewriterTimer = setTimeout(stepTypewriter, 22);
+    } else {
+      _cockpitCharIdx++;
+      target.textContent = currentQuote.substring(0, _cockpitCharIdx);
+      if (_cockpitCharIdx >= currentQuote.length) {
+        _cockpitIsDeleting = true;
+        _cockpitTypewriterTimer = setTimeout(stepTypewriter, 3200);
+        return;
+      }
+      _cockpitTypewriterTimer = setTimeout(stepTypewriter, 42);
+    }
+  }
+
+  stepTypewriter();
+
+  // 2. File Attachment Preview Handling
+  function updateAttachmentPreview() {
+    if (!previewBar) return;
+    if (!pendingFile) {
+      previewBar.innerHTML = '';
+      previewBar.style.display = 'none';
+      return;
+    }
+
+    const isImage = pendingFile.type.startsWith('image/');
+    const previewUrl = isImage ? URL.createObjectURL(pendingFile) : null;
+    const sizeStr = pendingFile.size < 1024 * 1024
+      ? (pendingFile.size / 1024).toFixed(1) + ' KB'
+      : (pendingFile.size / (1024 * 1024)).toFixed(1) + ' MB';
+
+    previewBar.style.display = 'flex';
+    previewBar.innerHTML = `
+      <div class="ck-dark-file-chip">
+        ${isImage ? `<img src="${previewUrl}" class="ck-dark-file-thumb" alt="Preview"/>` : '<span>📄</span>'}
+        <span><strong>${escapeHtml(pendingFile.name)}</strong> (${sizeStr})</span>
+        <button type="button" id="ck-dark-remove-file" class="ck-dark-file-remove" title="Remove attachment">&times;</button>
+      </div>
+    `;
+
+    document.getElementById('ck-dark-remove-file')?.addEventListener('click', () => {
+      pendingFile = null;
+      if (fileInput) fileInput.value = '';
+      updateAttachmentPreview();
     });
+  }
+
+  attachBtn?.addEventListener('click', () => fileInput?.click());
+  fileInput?.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    pendingFile = file;
+    updateAttachmentPreview();
+    inputEl?.focus();
   });
 
-  if (micBtn) {
-    micBtn.addEventListener('click', () => {
-      micBtn.classList.toggle('active');
-      if (micBtn.classList.contains('active')) {
-        input.placeholder = "Listening... describe your issue";
-        setTimeout(() => {
-          if (micBtn.classList.contains('active')) {
-            input.value = "Pothole on Main Road near Bus Stop 4";
-            micBtn.classList.remove('active');
-            input.placeholder = "Search data, reports, or ask Kalki AI...";
-          }
-        }, 2000);
-      } else {
-        input.placeholder = "Search data, reports, or ask Kalki AI...";
-      }
-    });
-  }
-
-  function handleSend() {
-    const message = input.value.trim();
-    if (!message) return;
-    const sessionId = 'ck-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9);
-    window.navigate
-      ? window.navigate(`/agent/chat?sessionId=${encodeURIComponent(sessionId)}&message=${encodeURIComponent(message)}`)
-      : (window.location.href = `/agent/chat?sessionId=${encodeURIComponent(sessionId)}&message=${encodeURIComponent(message)}`);
-  }
-
-  sendBtn.addEventListener('click', handleSend);
-  input.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
+  // 3. Mic Voice Input Simulation & Audio Wave State
+  micBtn?.addEventListener('click', () => {
+    micBtn.classList.toggle('active');
+    if (micBtn.classList.contains('active')) {
+      inputEl.placeholder = "Listening live... say your complaint...";
+      setTimeout(() => {
+        if (micBtn.classList.contains('active')) {
+          inputEl.value = "Massive open pothole right outside Ferguson College gate causing traffic jam";
+          micBtn.classList.remove('active');
+          inputEl.placeholder = "Type your request here — e.g. 'garbage not collected near FC road'...";
+          inputEl.focus();
+        }
+      }, 1800);
+    } else {
+      inputEl.placeholder = "Type your request here — e.g. 'garbage not collected near FC road'...";
     }
   });
+
+  // 4. Thread message rendering helpers (Embedded inside dark card)
+  function appendThreadHtml(html) {
+    if (!threadEl) return;
+    threadEl.style.display = 'flex';
+
+    const temp = document.createElement('div');
+    temp.innerHTML = html;
+    while (temp.firstChild) threadEl.appendChild(temp.firstChild);
+    threadEl.scrollTop = threadEl.scrollHeight;
+  }
+
+  function renderUserBubble(text, attachmentMeta = null) {
+    let attachmentHtml = '';
+    if (attachmentMeta) {
+      if (attachmentMeta.isImage && attachmentMeta.previewUrl) {
+        attachmentHtml = `
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+            <img src="${escapeHtml(attachmentMeta.previewUrl)}" class="ck-dark-user-img" alt="Proof" />
+            <div style="font-size:0.75rem;">
+              <div>📷 <strong>${escapeHtml(attachmentMeta.name)}</strong></div>
+              <div style="opacity:0.8;">${escapeHtml(attachmentMeta.sizeStr)}</div>
+            </div>
+          </div>
+        `;
+      } else {
+        attachmentHtml = `
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:0.75rem;">
+            <span>📄</span>
+            <div><strong>${escapeHtml(attachmentMeta.name)}</strong> (${escapeHtml(attachmentMeta.sizeStr)})</div>
+          </div>
+        `;
+      }
+    }
+
+    return `
+      <div class="ck-dark-msg-row ck-dark-msg-user">
+        <div class="ck-dark-bubble-user">
+          ${attachmentHtml}
+          <div>${escapeHtml(text)}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderAgentBubble(text) {
+    const formatted = escapeHtml(text || '')
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br>');
+
+    return `
+      <div class="ck-dark-msg-row ck-dark-msg-agent">
+        <div class="ck-dark-avatar" style="width:28px; height:28px; box-shadow:none;">
+          <svg width="14" height="14" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        </div>
+        <div class="ck-dark-bubble-agent">
+          ${formatted}
+        </div>
+      </div>
+    `;
+  }
+
+  function renderThinkingBubble() {
+    return `
+      <div class="ck-dark-msg-row ck-dark-msg-agent" id="ck-dark-thinking">
+        <div class="ck-dark-avatar" style="width:28px; height:28px; box-shadow:none;">
+          <svg width="14" height="14" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        </div>
+        <div class="ck-dark-bubble-agent" style="display:flex; align-items:center; gap:8px; padding:10px 16px;">
+          <span style="font-size:0.8rem; font-weight:600; color:#ff7d5c;">Civic Assistant analyzing</span>
+          <div class="agent-thinking-dots" style="padding:0;"><span></span><span></span><span></span></div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderConfirmCard(summaryRows, confirmText) {
+    const rows = Array.isArray(summaryRows) ? summaryRows.map(r => `
+      <div class="ck-dark-confirm-row">
+        <span class="ck-dark-confirm-label">${escapeHtml(r.label)}</span>
+        <span class="ck-dark-confirm-val">${escapeHtml(r.value)}</span>
+      </div>
+    `).join('') : '';
+
+    return `
+      <div class="ck-dark-msg-row ck-dark-msg-agent">
+        <div class="ck-dark-avatar" style="width:28px; height:28px; background:#10b981; box-shadow:none;">
+          <svg width="14" height="14" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <div class="ck-dark-confirm-card">
+          <div class="ck-dark-confirm-title">
+            <span>📝</span> Official Case Review — Ready to File
+          </div>
+          <p style="font-size:0.82rem; color:rgba(255,255,255,0.7); margin-bottom:12px;">
+            ${escapeHtml((confirmText || '').split('\n\n')[0] || 'Please review your complaint summary before official filing.')}
+          </p>
+          <div class="ck-dark-confirm-table">${rows}</div>
+          <div class="ck-dark-confirm-actions" id="ck-dark-confirm-actions">
+            <button type="button" id="ck-dark-confirm-submit-btn" class="ck-dark-btn-primary">
+              ✓ File Official Case
+            </button>
+            <button type="button" id="ck-dark-confirm-cancel-btn" class="ck-dark-btn-secondary">
+              ✗ Modify / Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderSuccessCard(entityId, entityName, capability) {
+    return `
+      <div class="ck-dark-msg-row ck-dark-msg-agent">
+        <div class="ck-dark-avatar" style="width:28px; height:28px; background:#16a34a; box-shadow:none;">
+          <svg width="16" height="16" fill="none" stroke="white" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+        </div>
+        <div class="ck-dark-success-card">
+          <div class="ck-dark-success-badge">
+            <span>🎉</span> Official Case #${entityId} Registered!
+          </div>
+          <p style="font-size:0.85rem; color:#f1f5f9; margin-bottom:12px;">
+            <strong>${escapeHtml(entityName || capability)}</strong> has been officially logged and routed to Ward 14 Pune dispatch.
+          </p>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <a href="/entities/${entityId}" class="ck-dark-btn-primary">
+              Inspect My Case →
+            </a>
+            <button type="button" id="ck-dark-new-case-btn" class="ck-dark-btn-secondary">
+              + File Another Issue
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // 5. Core Send Message Function inside Dark Card
+  async function sendCockpitMessage(textToSend, explicitFile = null) {
+    const file = explicitFile || pendingFile;
+    const cleanText = (textToSend || '').trim();
+
+    if (isWaiting || (!cleanText && !file)) return;
+    isWaiting = true;
+
+    // Build attachment metadata for bubble
+    let attachmentMeta = null;
+    if (file) {
+      const isImage = file.type.startsWith('image/');
+      attachmentMeta = {
+        name: file.name,
+        sizeStr: file.size < 1024 * 1024 ? (file.size / 1024).toFixed(1) + ' KB' : (file.size / (1024 * 1024)).toFixed(1) + ' MB',
+        isImage,
+        previewUrl: isImage ? URL.createObjectURL(file) : null,
+      };
+    }
+
+    // Clear input
+    if (inputEl) {
+      inputEl.value = '';
+    }
+    pendingFile = null;
+    if (fileInput) fileInput.value = '';
+    updateAttachmentPreview();
+
+    // Render user message bubble
+    appendThreadHtml(renderUserBubble(cleanText || (file ? `Attached file: ${file.name}` : ''), attachmentMeta));
+
+    // Show thinking bubble
+    appendThreadHtml(renderThinkingBubble());
+    if (sendBtn) sendBtn.disabled = true;
+
+    try {
+      const res = await agentApi.chat(sessionId, cleanText, file);
+      document.getElementById('ck-dark-thinking')?.remove();
+
+      const data = res.data;
+
+      if (data.type === 'confirm') {
+        appendThreadHtml(renderConfirmCard(data.summary || [], data.text));
+        setTimeout(() => {
+          document.getElementById('ck-dark-confirm-submit-btn')?.addEventListener('click', () => {
+            document.getElementById('ck-dark-confirm-actions')?.remove();
+            sendCockpitMessage('yes');
+          });
+          document.getElementById('ck-dark-confirm-cancel-btn')?.addEventListener('click', () => {
+            document.getElementById('ck-dark-confirm-actions')?.remove();
+            sendCockpitMessage('cancel');
+          });
+        }, 50);
+      } else if (data.type === 'submitted') {
+        appendThreadHtml(renderSuccessCard(data.entity_id, data.entity_name, data.capability));
+        setTimeout(() => {
+          document.getElementById('ck-dark-new-case-btn')?.addEventListener('click', () => {
+            resetCockpit();
+          });
+        }, 50);
+      } else {
+        appendThreadHtml(renderAgentBubble(data.text || 'Understood. Please provide additional details or landmarks.'));
+      }
+    } catch (err) {
+      document.getElementById('ck-dark-thinking')?.remove();
+      appendThreadHtml(renderAgentBubble('I encountered a connection hiccup with the AI dispatcher. Please try describing your issue again.'));
+      console.error('[Cockpit Agent Error]:', err);
+    } finally {
+      isWaiting = false;
+      if (sendBtn) sendBtn.disabled = false;
+      inputEl?.focus();
+    }
+  }
+
+  // 6. Wire Send Button & Enter Key
+  sendBtn?.addEventListener('click', () => {
+    sendCockpitMessage(inputEl?.value);
+  });
+
+  inputEl?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendCockpitMessage(inputEl.value);
+    }
+  });
+
+  // 7. Wire Suggestion Chips (Minimal Pills)
+  document.querySelectorAll('.ck-dark-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const prompt = chip.getAttribute('data-text');
+      if (prompt) {
+        sendCockpitMessage(prompt);
+      }
+    });
+  });
+
+  // 8. Wire Gateway Cards below cockpit
+  document.querySelectorAll('.ck-gateway-trigger').forEach(card => {
+    card.addEventListener('click', () => {
+      const prompt = card.getAttribute('data-gateway-prompt');
+      const cockpit = document.getElementById('ck-dark-cockpit');
+      if (cockpit) {
+        cockpit.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      if (inputEl) {
+        inputEl.value = prompt || '';
+        inputEl.focus();
+      }
+    });
+  });
+
+  // 9. Reset Cockpit (Start fresh complaint)
+  function resetCockpit() {
+    if (sessionId) {
+      agentApi.clearSession(sessionId);
+    }
+    sessionId = 'ck-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9);
+    isWaiting = false;
+    pendingFile = null;
+    if (fileInput) fileInput.value = '';
+    updateAttachmentPreview();
+
+    if (threadEl) {
+      threadEl.innerHTML = '';
+      threadEl.style.display = 'none';
+    }
+    inputEl?.focus();
+  }
+
+  resetBtn?.addEventListener('click', resetCockpit);
 }
+
 
 function _blendWithCleanDemo(existing) {
   const defaults = [
@@ -538,7 +982,10 @@ async function renderCoordinatorAreaDash(container, user, metaData) {
           <div class="card-title">Cases Requiring Action</div>
           <div class="card-subtitle">Submitted cases in ${escapeHtml(area || 'Sector 5')} awaiting verification</div>
         </div>
-        <a href="/entities?status=submitted" class="btn btn-link btn-sm">View Queue</a>
+        <div style="display:flex;gap:12px;">
+          <a href="/entities?status=submitted" class="btn btn-link btn-sm">View Queue</a>
+          <a href="/buzz?tab=review" class="btn btn-link btn-sm">Civic Buzz review</a>
+        </div>
       </div>
       ${renderRecentTable(pending, true)}
     </div>
@@ -568,7 +1015,10 @@ async function renderCoordinatorGeneralDash(container, user, metaData) {
           <div class="card-title">Cases Requiring Action</div>
           <div class="card-subtitle">Unassigned cases awaiting coordinator review</div>
         </div>
-        <a href="/entities?status=submitted" class="btn btn-link btn-sm">View Queue</a>
+        <div style="display:flex;gap:12px;">
+          <a href="/entities?status=submitted" class="btn btn-link btn-sm">View Queue</a>
+          <a href="/buzz?tab=review" class="btn btn-link btn-sm">Civic Buzz review</a>
+        </div>
       </div>
       ${renderRecentTable(pending, true)}
     </div>

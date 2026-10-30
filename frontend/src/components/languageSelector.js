@@ -279,7 +279,10 @@ export async function translatePage(langCode) {
   try {
     const res = await fetch('/api/translate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'ck-web',
+      },
       body: JSON.stringify({ texts: uncached, targetLang: target })
     });
 

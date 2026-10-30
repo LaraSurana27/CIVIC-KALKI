@@ -1,12 +1,12 @@
 /**
- * CIVIC-KALKI — Meme Template Renderer (Section 2)
+ * CIVIC-KALKI ï¿½ Meme Template Renderer (Section 2)
  * 3 fixed HTML/CSS templates: Relatable | Awareness | Call to Action
  * One renderer used for both preview and export (html-to-image).
  *
  * HARD RULES:
  * - Background is issue photo only (no stock memes / celebrity images)
  * - No status claims baked into the image
- * - Footer always shown: "Civic awareness content | Caption AI-assisted | Tap to view the real issue"
+ * - Footer always shown: "Civic awareness content | Caption AI-assisted"
  * - Location shown at locality level only
  * - Reporter identity never shown
  */
@@ -21,7 +21,7 @@ function e(str) {
 const TEMPLATE_COLORS = {
   relatable: { primary: '#FF6B35', secondary: '#1A1A2E', accent: '#FFD700', text: '#FFFFFF' },
   awareness: { primary: '#2E86AB', secondary: '#1A1A2E', accent: '#A8DADC', text: '#FFFFFF' },
-  call_to_action: { primary: '#43AA8B', secondary: '#1A1A2E', accent: '#F8961E', text: '#FFFFFF' },
+  cta: { primary: '#43AA8B', secondary: '#1A1A2E', accent: '#F8961E', text: '#FFFFFF' },
 };
 
 /**
@@ -34,7 +34,7 @@ const TEMPLATE_COLORS = {
  *   - category: string (issue category)
  *   - photoUrl: string|null (URL to the issue photo)
  *   - shareLink: string|null (link back to the issue)
- *   - exportMode: boolean (if true, renders for image export — inline styles only)
+ *   - exportMode: boolean (if true, renders for image export ï¿½ inline styles only)
  */
 export function renderMemeCard(opts) {
   const { template_type = 'awareness', headline, caption, locality, category, photoUrl, shareLink, exportMode = false } = opts;
@@ -47,7 +47,7 @@ export function renderMemeCard(opts) {
   const templateLabel = {
     relatable: '?? Relatable',
     awareness: '?? Awareness',
-    call_to_action: '?? Call to Action',
+    cta: 'CTA',
   }[template_type] || '?? Awareness';
 
   const captionContent = {
@@ -59,12 +59,12 @@ export function renderMemeCard(opts) {
     `,
     awareness: `
       <div style="background:rgba(46,134,171,0.85);backdrop-filter:blur(4px);padding:16px 20px;border-radius:12px;margin:0 0 8px 0;border-left:4px solid ${colors.accent};">
-        <div style="font-size:12px;color:${colors.accent};font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px;">CIVIC ISSUE — ${e(category || 'Infrastructure')}</div>
+        <div style="font-size:12px;color:${colors.accent};font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px;">CIVIC ISSUE ï¿½ ${e(category || 'Infrastructure')}</div>
         <div style="font-size:20px;font-weight:700;color:#fff;line-height:1.2;margin-bottom:8px;">${e(headline)}</div>
         <div style="font-size:14px;color:#ddd;line-height:1.5;">${e(caption)}</div>
       </div>
     `,
-    call_to_action: `
+    cta: `
       <div style="background:rgba(0,0,0,0.75);backdrop-filter:blur(4px);padding:16px 20px;border-radius:12px;margin:0 0 8px 0;">
         <div style="font-size:20px;font-weight:800;color:${colors.accent};line-height:1.2;margin-bottom:8px;">${e(headline)}</div>
         <div style="font-size:14px;color:#fff;line-height:1.5;margin-bottom:12px;">${e(caption)}</div>
@@ -105,9 +105,9 @@ export function renderMemeCard(opts) {
       <div style="position:relative;z-index:2;padding:16px;">
         ${captionContent}
 
-        <!-- Footer (mandatory — never remove) -->
+        <!-- Footer (mandatory ï¿½ never remove) -->
         <div style="font-size:10px;color:rgba(255,255,255,0.55);text-align:center;padding-top:6px;border-top:1px solid rgba(255,255,255,0.15);margin-top:4px;">
-          Civic awareness content | Caption AI-assisted | Tap to view the real issue
+          Civic awareness content | Caption AI-assisted
         </div>
       </div>
     </div>

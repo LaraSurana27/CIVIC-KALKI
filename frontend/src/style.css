@@ -3967,3 +3967,543 @@ html, body {
     display: none;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   9. HIGH-END DARKSHADE AGENTIC AI CHAT HERO
+   Original high-end dark gradient visual aesthetic with
+   sleek minimal pill bar, voice wave animation, small chips,
+   and integrated in-page conversational form filing.
+   ══════════════════════════════════════════════════════════════ */
+.ck-agent-dark-card {
+  position: relative;
+  background: linear-gradient(135deg, #10121d 0%, #151928 45%, #0e1a2f 100%);
+  border-radius: 18px;
+  padding: 22px 26px;
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  transition: all 0.25s ease;
+  margin-bottom: 24px;
+}
+
+.ck-agent-dark-card:focus-within {
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.38), 0 0 0 1px rgba(255, 90, 54, 0.45);
+  border-color: rgba(255, 90, 54, 0.4);
+}
+
+.ck-dark-ambient {
+  position: absolute;
+  top: -50px;
+  right: -50px;
+  width: 220px;
+  height: 220px;
+  background: radial-gradient(circle, rgba(255, 90, 54, 0.16) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* Header */
+.ck-dark-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ck-dark-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ff5a36, #e44);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 10px rgba(255, 90, 54, 0.35);
+}
+
+.ck-dark-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #ffffff;
+  letter-spacing: 0.01em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ck-dark-sub {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.55);
+  margin-top: 2px;
+}
+
+.ck-dark-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.14);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ck-dark-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #34d399;
+  animation: ck-live-pulse 1.8s infinite;
+}
+
+@keyframes ck-live-pulse {
+  0% { transform: scale(0.9); opacity: 0.6; }
+  50% { transform: scale(1.3); opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0.6; }
+}
+
+/* Voice Wave Animation (The signature animated sound bars) */
+.ck-voice-wave {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 22px;
+  padding: 0 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ck-vbar {
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(to top, #ff5a36, #ff8c5a);
+  animation: ck-vbar-dance 1.2s ease-in-out infinite alternate;
+}
+
+.ck-vbar.vbar-1 { height: 6px; animation-delay: 0s; }
+.ck-vbar.vbar-2 { height: 16px; animation-delay: 0.25s; }
+.ck-vbar.vbar-3 { height: 9px; animation-delay: 0.5s; }
+.ck-vbar.vbar-4 { height: 14px; animation-delay: 0.15s; }
+
+@keyframes ck-vbar-dance {
+  0% { height: 4px; opacity: 0.45; }
+  50% { height: 16px; opacity: 1; }
+  100% { height: 8px; opacity: 0.75; }
+}
+
+/* Reset / New Chat Button */
+.ck-dark-reset-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.ck-dark-reset-btn:hover {
+  background: rgba(255, 90, 54, 0.2);
+  border-color: #ff5a36;
+  color: #ff8c5a;
+}
+
+/* Motion Text Strip (High-End Dark) */
+.ck-dark-motion-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  margin-bottom: 14px;
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.ck-dark-motion-tag {
+  font-weight: 700;
+  color: #ff7d5c;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.ck-dark-motion-box {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.ck-dark-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  background: #ff5a36;
+  margin-left: 2px;
+  vertical-align: middle;
+  animation: ck-blink 0.8s infinite;
+}
+
+/* Minimal Input Bar (High-End Pill) */
+.ck-dark-input-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ck-dark-input-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: 4px 6px 4px 12px;
+  transition: all 0.2s ease;
+}
+
+.ck-dark-input-bar:focus-within {
+  border-color: #ff5a36;
+  background: rgba(255, 255, 255, 0.09);
+  box-shadow: 0 0 0 3px rgba(255, 90, 54, 0.2);
+}
+
+.ck-dark-attach-btn,
+.ck-dark-mic-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+}
+
+.ck-dark-attach-btn:hover,
+.ck-dark-mic-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.ck-dark-mic-btn.active {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.2);
+  animation: ck-pulse-red 1s infinite alternate;
+}
+
+.ck-dark-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #ffffff;
+  font-size: 0.88rem;
+  font-family: inherit;
+  padding: 8px 4px;
+  min-width: 0;
+}
+
+.ck-dark-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.ck-dark-send-btn {
+  padding: 9px 18px;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(135deg, #ff5a36, #e03c22);
+  color: white;
+  font-weight: 700;
+  font-size: 0.84rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 2px 8px rgba(255, 90, 54, 0.35);
+}
+
+.ck-dark-send-btn:hover {
+  opacity: 0.92;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(255, 90, 54, 0.45);
+}
+
+/* File Attachment Preview inside dark bar */
+.ck-dark-file-preview {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+}
+
+.ck-dark-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  font-size: 0.76rem;
+  color: #ffffff;
+}
+
+.ck-dark-file-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.ck-dark-file-remove {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.ck-dark-file-remove:hover {
+  color: #ef4444;
+}
+
+/* Small Cards / Chips (The clean, minimal pills) */
+.ck-dark-suggestions {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ck-dark-chip {
+  font-size: 0.74rem;
+  color: rgba(255, 255, 255, 0.72);
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: rgba(255, 255, 255, 0.04);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ck-dark-chip:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border-color: rgba(255, 90, 54, 0.5);
+  transform: translateY(-1px);
+}
+
+/* Embedded Conversation Thread (Inside same dark card) */
+.ck-dark-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 380px;
+  overflow-y: auto;
+  margin-bottom: 14px;
+  padding-right: 4px;
+  scroll-behavior: smooth;
+}
+
+.ck-dark-thread::-webkit-scrollbar {
+  width: 5px;
+}
+.ck-dark-thread::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+}
+
+.ck-dark-msg-row {
+  display: flex;
+  gap: 10px;
+  max-width: 90%;
+  animation: ck-fade-up 0.2s ease-out;
+}
+
+@keyframes ck-fade-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.ck-dark-msg-user {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+  max-width: 80%;
+}
+
+.ck-dark-msg-agent {
+  align-self: flex-start;
+  max-width: 86%;
+}
+
+.ck-dark-bubble-user {
+  background: linear-gradient(135deg, #ff5a36, #e03c22);
+  color: #ffffff;
+  padding: 10px 16px;
+  border-radius: 18px 18px 4px 18px;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  box-shadow: 0 2px 10px rgba(255, 90, 54, 0.25);
+  word-break: break-word;
+}
+
+.ck-dark-bubble-agent {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #f1f5f9;
+  padding: 12px 16px;
+  border-radius: 18px 18px 18px 4px;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.ck-dark-bubble-agent strong {
+  color: #ff7d5c;
+}
+
+/* User image inside bubble */
+.ck-dark-user-img {
+  width: 52px;
+  height: 52px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+/* Confirm Card in Darkshade */
+.ck-dark-confirm-card {
+  background: rgba(15, 23, 42, 0.95);
+  border: 1.5px solid #ff5a36;
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.ck-dark-confirm-title {
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: #ffffff;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ck-dark-confirm-table {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ck-dark-confirm-row {
+  display: flex;
+  gap: 10px;
+  font-size: 0.8rem;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.ck-dark-confirm-label {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+  width: 130px;
+  flex-shrink: 0;
+}
+
+.ck-dark-confirm-val {
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.ck-dark-confirm-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.ck-dark-btn-primary {
+  background: linear-gradient(135deg, #ff5a36, #e03c22);
+  color: #ffffff;
+  border: none;
+  border-radius: 999px;
+  padding: 7px 18px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 2px 8px rgba(255, 90, 54, 0.35);
+  text-decoration: none;
+}
+
+.ck-dark-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 90, 54, 0.45);
+  color: #ffffff;
+}
+
+.ck-dark-btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  padding: 7px 16px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-decoration: none;
+}
+
+.ck-dark-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* Success Card in Darkshade */
+.ck-dark-success-card {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1.5px solid #10b981;
+  border-radius: 14px;
+  padding: 16px 18px;
+}
+
+.ck-dark-success-badge {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #34d399;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+

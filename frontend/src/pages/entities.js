@@ -1,4 +1,4 @@
-import { requireAuth } from '../auth.js';
+import { requireAuth, getUser, getRole } from '../auth.js';
 import { renderLayout, attachLayoutEvents } from '../components/layout.js';
 import { entities as apiEntities } from '../api.js';
 import { toastError } from '../components/toast.js';
@@ -31,6 +31,17 @@ export async function renderEntities(params = {}, searchParams = null) {
   if (urlParams.has('page')) currentParams.page = Number(urlParams.get('page'));
   else currentParams.page = 1;
   
+  const user = getUser();
+  const role = getRole();
+  const isCitizen = role === 'citizen';
+
+  // Citizens can strictly only view entities initiated by themselves
+  if (isCitizen && user?.user_id) {
+    currentParams.owner_user_id = user.user_id;
+  } else {
+    delete currentParams.owner_user_id;
+  }
+
   // Load EntityTypes list dynamically
   try {
     const typesRes = await apiEntities.listTypes().catch(() => ({ data: [] }));
@@ -42,10 +53,18 @@ export async function renderEntities(params = {}, searchParams = null) {
   const selectedType = entityTypes.find(t => String(t.entity_type_id) === String(currentParams.entity_type_id));
   const capability = getCapabilityPresentation(selectedType);
 
-  const pageTitleText = selectedType ? `${capability.title} Cases` : 'All Cases & Requests';
-  const pageSubtitleText = selectedType
-    ? `Browsing cases for capability "${capability.title}".`
-    : 'Browse, search, and track all civic cases and requests across your workspace.';
+  let pageTitleText = 'All Cases & Requests';
+  let pageSubtitleText = 'Browse, search, and track all civic cases and requests across your workspace.';
+
+  if (isCitizen) {
+    pageTitleText = selectedType ? `My ${capability.title} Requests` : 'My Civic Activity';
+    pageSubtitleText = selectedType
+      ? `Tracking cases initiated by you for capability "${capability.title}".`
+      : 'Track, review, and manage civic cases and initiatives initiated by you.';
+  } else if (selectedType) {
+    pageTitleText = `${capability.title} Cases`;
+    pageSubtitleText = `Browsing cases for capability "${capability.title}".`;
+  }
 
   const app = document.getElementById('app');
   app.innerHTML = renderLayout(`
@@ -150,6 +169,9 @@ async function loadEntities() {
   const content = document.getElementById('entities-content');
   if (!content) return;
 
+  const role = getRole();
+  const isCitizen = role === 'citizen';
+
   try {
     const res = await apiEntities.list(currentParams);
     const { data, pagination } = res;
@@ -158,14 +180,20 @@ async function loadEntities() {
       content.innerHTML = `
         <div class="card p-8 text-center" style="padding:48px 24px; text-align:center;">
           <div style="display:inline-flex; align-items:center; justify-content:center; width:52px; height:52px; border-radius:50%; background:var(--gray-100); color:var(--text-muted); margin:0 auto 12px;">
-            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
           </div>
-          <h3 style="font-size:1.15rem; font-weight:600; margin-bottom:6px; color:var(--text-primary);">No cases found</h3>
-          <p style="font-size:0.875rem; color:var(--text-muted); max-width:400px; margin:0 auto 20px;">
-            No civic cases match your filter. Try adjusting your query or starting a new civic action.
+          <h3 style="font-size:1.15rem; font-weight:600; margin-bottom:6px; color:var(--text-primary);">
+            ${isCitizen ? 'No civic activity yet' : 'No cases found'}
+          </h3>
+          <p style="font-size:0.875rem; color:var(--text-muted); max-width:420px; margin:0 auto 20px;">
+            ${isCitizen 
+              ? 'You have not initiated any civic cases, reports, or applications yet. Start a new civic action to get started.'
+              : 'No civic cases match your filter. Try adjusting your query or starting a new civic action.'}
           </p>
           <div style="display:flex; gap:12px; justify-content:center;">
-            <a href="/entities" class="btn btn-secondary">Clear Filters</a>
+            ${(currentParams.status || currentParams.entity_type_id || currentParams.name) ? `
+              <a href="/entities" class="btn btn-secondary">Clear Filters</a>
+            ` : ''}
             <a href="/entities/new${currentParams.entity_type_id ? `?entity_type_id=${currentParams.entity_type_id}` : ''}" class="btn btn-primary" style="display:inline-flex; align-items:center; gap:6px;">
               <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
               Start Civic Action
@@ -187,11 +215,11 @@ async function loadEntities() {
             </a>
           </td>
           <td><span class="badge badge-secondary">${escapeHtml(pres.shortTitle)}</span></td>
-          <td>${escapeHtml(item.owner?.name || 'System')}</td>
+          ${!isCitizen ? `<td>${escapeHtml(item.owner?.name || 'System')}</td>` : ''}
           <td>${escapeHtml(item.area || '—')}</td>
           <td><span class="badge badge-${item.status}">${formatStatusLabel(item.status)}</span></td>
           <td>
-            <a href="/entities/${item.entity_id}" class="btn btn-secondary btn-sm">Review Case →</a>
+            <a href="/entities/${item.entity_id}" class="btn btn-secondary btn-sm">${isCitizen ? 'View Details →' : 'Review Case →'}</a>
           </td>
         </tr>
       `;
@@ -222,7 +250,7 @@ async function loadEntities() {
                 <th>Case ID</th>
                 <th>Title</th>
                 <th>Capability Type</th>
-                <th>Submitted By</th>
+                ${!isCitizen ? '<th>Submitted By</th>' : ''}
                 <th>Area / Jurisdiction</th>
                 <th>Status</th>
                 <th>Actions</th>

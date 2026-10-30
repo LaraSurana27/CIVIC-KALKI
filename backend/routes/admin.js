@@ -99,15 +99,21 @@ router.get('/users/:id', verifyToken, checkRole(['admin']), async (req, res, nex
   }
 });
 
+const { VALID_ROLES } = require('../constants/roles');
+
 // ─── POST /admin/users/:id/role — update role (admin only) ─────────────────
 router.post('/users/:id/role', verifyToken, checkRole(['admin']), async (req, res, next) => {
   try {
     const userId = parseUserId(req.params.id);
     const { role, assignedArea } = req.body;
-    const validRoles = ['citizen', 'coordinator_area', 'coordinator_general', 'director', 'admin'];
+    const validRoles = VALID_ROLES;
 
     if (!role || typeof role !== 'string' || !validRoles.includes(role)) {
       return next(createHttpError('Role is required and must be one of: citizen, coordinator_area, coordinator_general, director, admin.', 400));
+    }
+
+    if (Number(req.user.user_id) === userId && role !== 'admin') {
+      return next(createHttpError('Administrators cannot demote themselves.', 400));
     }
 
     const current = await prisma.user.findUnique({

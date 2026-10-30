@@ -7,29 +7,14 @@
  */
 
 const request = require('supertest');
+const path = require('path');
+const fs = require('fs');
 const app = require('../index');
 const prisma = require('../db');
-const jwt = require('jsonwebtoken');
-const fs = require('fs');
-const path = require('path');
-
-const JWT_SECRET = process.env.JWT_SECRET || 'development-secret-change-me';
-
-function generateTestToken(user) {
-  return jwt.sign(
-    {
-      user_id: user.user_id,
-      name: user.name,
-      role: user.role,
-      assigned_area: user.assignedArea || null,
-    },
-    JWT_SECRET,
-    { expiresIn: '1h' }
-  );
-}
+const { createTestUser, cleanupAll, trackEntityId } = require('./helpers/authHelper');
 
 describe('Phase 3B — Dynamic Civic OS UI Integration Tests', () => {
-  let citizenToken, coordinatorAreaToken, directorToken, adminToken;
+  let citizenHeaders, coordinatorAreaHeaders, directorHeaders, adminHeaders;
   let citizenUser, coordinatorAreaUser, directorUser, adminUser;
 
   let deployedEntityTypeId;
@@ -40,15 +25,22 @@ describe('Phase 3B — Dynamic Civic OS UI Integration Tests', () => {
   const testModuleName = `Dynamic UI Test Module ${Date.now()}`;
 
   beforeAll(async () => {
-    citizenUser = await prisma.user.findFirst({ where: { role: 'citizen' } });
-    coordinatorAreaUser = await prisma.user.findFirst({ where: { role: 'coordinator_area' } });
-    directorUser = await prisma.user.findFirst({ where: { role: 'director' } });
-    adminUser = await prisma.user.findFirst({ where: { role: 'admin' } });
+    // 1. Create ephemeral test users
+    const cit = await createTestUser({ role: 'citizen' });
+    citizenUser = cit.user;
+    citizenHeaders = cit.headers;
 
-    citizenToken = generateTestToken(citizenUser);
-    coordinatorAreaToken = generateTestToken(coordinatorAreaUser);
-    directorToken = generateTestToken(directorUser);
-    adminToken = generateTestToken(adminUser);
+    const coord = await createTestUser({ role: 'coordinator_area', assignedArea: 'Sector 5' });
+    coordinatorAreaUser = coord.user;
+    coordinatorAreaHeaders = coord.headers;
+
+    const dir = await createTestUser({ role: 'director' });
+    directorUser = dir.user;
+    directorHeaders = dir.headers;
+
+    const adm = await createTestUser({ role: 'admin' });
+    adminUser = adm.user;
+    adminHeaders = adm.headers;
 
     const grievanceEntityType = await prisma.entityType.findFirst({ where: { name: 'Grievance' } });
 
@@ -97,7 +89,7 @@ describe('Phase 3B — Dynamic Civic OS UI Integration Tests', () => {
 
     const res = await request(app)
       .post('/module-builder/deploy')
-      .set('Authorization', `Bearer ${directorToken}`)
+      .set(directorHeaders)
       .send(payload);
 
     expect(res.statusCode).toBe(201);
@@ -110,6 +102,7 @@ describe('Phase 3B — Dynamic Civic OS UI Integration Tests', () => {
   });
 
   afterAll(async () => {
+    await cleanupAll();
     for (const entId of createdEntities) {
       await prisma.parameterValue.deleteMany({ where: { entity_id: entId } });
       await prisma.approvalHistory.deleteMany({ where: { entity_id: entId } });
@@ -144,7 +137,7 @@ describe('Phase 3B — Dynamic Civic OS UI Integration Tests', () => {
   test('Test 1: Dynamic EntityType list includes newly deployed modules', async () => {
     const res = await request(app)
       .get('/entities/entity-types')
-      .set('Authorization', `Bearer ${citizenToken}`);
+      .set(citizenHeaders);
 
     expect(res.statusCode).toBe(200);
     const found = res.body.data.find(et => et.entity_type_id === deployedEntityTypeId);
@@ -156,7 +149,7 @@ describe('Phase 3B — Dynamic Civic OS UI Integration Tests', () => {
   test('Test 2: Generic entity listing filters by entity_type_id', async () => {
     const res = await request(app)
       .get(`/entities?entity_type_id=${deployedEntityTypeId}`)
-      .set('Authorization', `Bearer ${citizenToken}`);
+      .set(citizenHeaders);
 
     expect(res.statusCode).toBe(200);
     expect(Array.isArray(res.body.data)).toBe(true);
@@ -166,7 +159,7 @@ describe('Phase 3B — Dynamic Civic OS UI Integration Tests', () => {
   test('Test 3: Generic form loads schema by entity_type_id', async () => {
     const res = await request(app)
       .get(`/forms/${deployedEntityTypeId}/schema`)
-      .set('Authorization', `Bearer ${citizenToken}`);
+      .set(citizenHeaders);
 
     expect(res.statusCode).toBe(200);
     expect(res.body.data).toBeDefined();
@@ -185,7 +178,7 @@ describe('Phase 3B — Dynamic Civic OS UI Integration Tests', () => {
   test('Test 4: Generic entity creation saves and returns entity', async () => {
     const res = await request(app)
       .post('/entities')
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({
         entity_type_id: deployedEntityTypeId,
         name: 'Dynamic UI Test Entity',
@@ -205,7 +198,7 @@ describe('Phase 3B — Dynamic Civic OS UI Integration Tests', () => {
     // Create an entity first
     const createRes = await request(app)
       .post('/entities')
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({
         entity_type_id: deployedEntityTypeId,
         name: 'Workflow Test Entity',
@@ -219,7 +212,7 @@ describe('Phase 3B — Dynamic Civic OS UI Integration Tests', () => {
     // Fetch allowed transitions — citizen on a draft entity
     const wfRes = await request(app)
       .get(`/entities/${entityId}/workflow`)
-      .set('Authorization', `Bearer ${citizenToken}`);
+      .set(citizenHeaders);
 
     expect(wfRes.statusCode).toBe(200);
     expect(wfRes.body.data).toBeDefined();
@@ -233,7 +226,7 @@ describe('Phase 3B — Dynamic Civic OS UI Integration Tests', () => {
   test('Test 6: Citizen can transition draft->submitted via metadata-driven workflow', async () => {
     const createRes = await request(app)
       .post('/entities')
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({
         entity_type_id: deployedEntityTypeId,
         name: 'Transition Test Entity',
@@ -247,7 +240,7 @@ describe('Phase 3B — Dynamic Civic OS UI Integration Tests', () => {
     // Citizen submits their entity
     const transitionRes = await request(app)
       .post(`/entities/${entityId}/transition`)
-      .set('Authorization', `Bearer ${citizenToken}`)
+      .set(citizenHeaders)
       .send({ to_status: 'submitted' });
 
     expect(transitionRes.statusCode).toBe(200);
@@ -264,7 +257,7 @@ describe('Phase 3B — Dynamic Civic OS UI Integration Tests', () => {
 
     const reportRes = await request(app)
       .get(`/reports/${deployedReportId}/execute`)
-      .set('Authorization', `Bearer ${directorToken}`);
+      .set(directorHeaders);
 
     expect(reportRes.statusCode).toBe(200);
     expect(reportRes.body.success).toBe(true);
@@ -277,7 +270,7 @@ describe('Phase 3B — Dynamic Civic OS UI Integration Tests', () => {
   test('Test 8: Report listing endpoint discovers module reports dynamically', async () => {
     const reportsRes = await request(app)
       .get(`/reports?entity_type_id=${deployedEntityTypeId}`)
-      .set('Authorization', `Bearer ${directorToken}`);
+      .set(directorHeaders);
 
     expect(reportsRes.statusCode).toBe(200);
     expect(reportsRes.body.success).toBe(true);
@@ -327,7 +320,7 @@ describe('Phase 3B — Dynamic Civic OS UI Integration Tests', () => {
   test('Test 11: Baseline reference modules accessible through generic EntityType API', async () => {
     const res = await request(app)
       .get('/entities/entity-types')
-      .set('Authorization', `Bearer ${citizenToken}`);
+      .set(citizenHeaders);
 
     expect(res.statusCode).toBe(200);
     const names = res.body.data.map(et => et.name);

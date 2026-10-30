@@ -1,12 +1,28 @@
 import { auth } from '../api.js';
-import { setAuth, isAuthenticated } from '../auth.js';
+import { setUserFromResponse, setAuth, isAuthenticated } from '../auth.js';
 import { navigate } from '../router.js';
 import { toastError } from '../components/toast.js';
 import { renderLanguageSelector, attachLanguageSelectorEvents } from '../components/languageSelector.js';
 
-export function renderLogin() {
+function getSafeRedirect(searchParams, fallback = '/dashboard') {
+  const raw = searchParams && searchParams.get('redirect');
+  if (
+    typeof raw === 'string' &&
+    raw.startsWith('/') &&
+    !raw.startsWith('//') &&
+    !raw.startsWith('/\\') &&
+    !raw.includes('://') &&
+    !raw.toLowerCase().includes('javascript:') &&
+    !/[\x00-\x1F\x7F]/.test(raw)
+  ) {
+    return raw;
+  }
+  return fallback;
+}
+
+export function renderLogin(params, searchParams) {
   if (isAuthenticated()) {
-    navigate('/dashboard');
+    navigate(getSafeRedirect(searchParams));
     return;
   }
 
@@ -126,8 +142,8 @@ export function renderLogin() {
 
     try {
       const res = await auth.login(email, password);
-      setAuth({ token: res.data.token, user: res.data.user });
-      navigate('/dashboard');
+      setUserFromResponse(res.data);
+      navigate(getSafeRedirect(searchParams));
     } catch (err) {
       const msg = err.message || 'Invalid email or password. Please check your credentials.';
       if (errorAlert) {

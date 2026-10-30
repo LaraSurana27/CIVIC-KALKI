@@ -1,28 +1,32 @@
 /**
- * CIVIC-KALKI — Meme Studio Configuration
+ * CIVIC-KALKI ï¿½ Meme Studio Configuration
  * All allowlists, blocklists, and rate limits live here.
  * Changing this file is the ONLY change needed to adjust policy.
  */
 
 // Workflow statuses that count as publicly visible
-const PUBLICLY_VISIBLE_STATUSES = ['coordinator_approved', 'approved'];
+const PUBLICLY_VISIBLE_STATUSES = ['approved'];
 
-// Issue-category allowlist for HUMOR (Relatable) template
+// Category policy is intentionally centralized so deployments can adjust it.
 const HUMOR_ALLOWED_CATEGORIES = [
-  'garbage', 'potholes', 'broken streetlights', 'waterlogging',
-  'waterlogging nuisance', 'parks', 'public spaces', 'sanitation',
-  'roads', 'footpath', 'street lights', 'stray animals',
+  'garbage', 'potholes', 'streetlights', 'waterlogging', 'parks/public spaces',
+];
+
+const ALLOWED_CATEGORIES = [
+  ...HUMOR_ALLOWED_CATEGORIES,
+  'accidents', 'injury', 'health emergencies', "women's safety",
+  'crime', 'harassment', 'communal', 'political',
 ];
 
 // Safety-sensitive categories: no Relatable, only Awareness + Call to Action
 const SAFETY_SENSITIVE_CATEGORIES = [
-  'accidents', 'injury', 'death', 'disease', 'health emergency', 'flood', 'fire',
+  'accidents', 'injury', 'health emergencies', "women's safety", 'women safety',
+  'health emergency', 'disaster', 'flood', 'fire', 'political',
 ];
 
 // Categories for which NO meme is allowed at all
 const NO_MEME_CATEGORIES = [
-  'crime', 'harassment', 'communal', 'political',
-  'sexual harassment', 'violence',
+  'crime', 'harassment', 'communal', 'sexual harassment',
 ];
 
 // Per-user rate limits (configurable)
@@ -37,7 +41,7 @@ const CAPTION_LIMITS = {
   captionMaxChars: 140,
 };
 
-const TEMPLATES = ['relatable', 'awareness', 'call_to_action'];
+const TEMPLATES = ['relatable', 'awareness', 'cta'];
 
 // Deterministic safety blocklist - profanity/slurs
 const PROFANITY_BLOCKLIST = [
@@ -57,7 +61,8 @@ const PII_PATTERNS = [
   /\b(\+91[\-\s]?)?\d{5}[\-\s]?\d{5}\b/,
   /\b[A-Z]{2}-?\d{1,2}-?[A-Z]{1,3}-?\d{4}\b/i,
   /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z]{2,}\b/i,
-  /https?:\/\/\S+/i,
+  /\b(?:https?:\/\/|ftp:\/\/)\S+/i,
+  /\b[A-Za-z0-9-]+\.(?:com|org|net|in|gov|edu)(?:\/\S*)?\b/i,
   /www\.\S+/i,
   /@[A-Za-z0-9_]+/,
 ];
@@ -65,6 +70,7 @@ const PII_PATTERNS = [
 module.exports = {
   PUBLICLY_VISIBLE_STATUSES,
   HUMOR_ALLOWED_CATEGORIES,
+  ALLOWED_CATEGORIES,
   SAFETY_SENSITIVE_CATEGORIES,
   NO_MEME_CATEGORIES,
   RATE_LIMITS,

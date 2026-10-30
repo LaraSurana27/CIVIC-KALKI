@@ -42,6 +42,14 @@ function generateTestToken(user) {
   );
 }
 
+function authHeaders(token) {
+  return {
+    Authorization: `Bearer ${token}`,
+    Cookie: `ck_session=${token}`,
+    'X-Requested-With': 'ck-web',
+  };
+}
+
 describe('CIVIC-KALKI — Metadata-Hierarchy & Permission Capabilities Engine', () => {
   let citizenToken, coordinatorToken, directorToken, adminToken;
   let citizenUser, coordinatorUser, directorUser, adminUser;
@@ -291,7 +299,7 @@ describe('CIVIC-KALKI — Metadata-Hierarchy & Permission Capabilities Engine', 
       createdEntityIds.push(ent1.entity_id);
       const valRes1 = await request(app)
         .post(`/entities/${ent1.entity_id}/values`)
-        .set('Authorization', `Bearer ${citizenToken}`)
+        .set(authHeaders(citizenToken))
         .send({
           values: [
             { parameter_id: crowdParam.parameter_id, value: '1200' },
@@ -322,7 +330,7 @@ describe('CIVIC-KALKI — Metadata-Hierarchy & Permission Capabilities Engine', 
 
       const valRes2 = await request(app)
         .post(`/entities/${ent2.entity_id}/values`)
-        .set('Authorization', `Bearer ${citizenToken}`)
+        .set(authHeaders(citizenToken))
         .send({
           values: [
             { parameter_id: resTypeParam.parameter_id, value: 'barricades' },
@@ -366,7 +374,7 @@ describe('CIVIC-KALKI — Metadata-Hierarchy & Permission Capabilities Engine', 
     test('citizen can transition draft -> submitted', async () => {
       const res = await request(app)
         .post(`/entities/${testEntity.entity_id}/transition`)
-        .set('Authorization', `Bearer ${citizenToken}`)
+        .set(authHeaders(citizenToken))
         .send({ to_status: 'submitted' });
 
       expect(res.statusCode).toBe(200);
@@ -379,7 +387,7 @@ describe('CIVIC-KALKI — Metadata-Hierarchy & Permission Capabilities Engine', 
 
       const res = await request(app)
         .post(`/entities/${testEntity.entity_id}/transition`)
-        .set('Authorization', `Bearer ${citizenToken}`)
+        .set(authHeaders(citizenToken))
         .send({ to_status: 'coordinator_verification' });
 
       expect(res.statusCode).toBe(400);
@@ -391,7 +399,7 @@ describe('CIVIC-KALKI — Metadata-Hierarchy & Permission Capabilities Engine', 
 
       const res = await request(app)
         .post(`/entities/${testEntity.entity_id}/transition`)
-        .set('Authorization', `Bearer ${coordinatorToken}`)
+        .set(authHeaders(coordinatorToken))
         .send({ to_status: 'coordinator_verification' });
 
       expect(res.statusCode).toBe(200);
@@ -402,7 +410,7 @@ describe('CIVIC-KALKI — Metadata-Hierarchy & Permission Capabilities Engine', 
     test('illegal transition sequence (e.g. draft directly to approved) fails with 400', async () => {
       const res = await request(app)
         .post(`/entities/${testEntity.entity_id}/transition`)
-        .set('Authorization', `Bearer ${directorToken}`)
+        .set(authHeaders(directorToken))
         .send({ to_status: 'approved' });
 
       expect(res.statusCode).toBe(400);
@@ -417,7 +425,7 @@ describe('CIVIC-KALKI — Metadata-Hierarchy & Permission Capabilities Engine', 
 
       const res = await request(app)
         .post(`/entities/${testEntity.entity_id}/transition`)
-        .set('Authorization', `Bearer ${coordinatorToken}`)
+        .set(authHeaders(coordinatorToken))
         .send({ to_status: 'rejected', reason: '' });
 
       expect(res.statusCode).toBe(400);
@@ -520,7 +528,7 @@ describe('CIVIC-KALKI — Metadata-Hierarchy & Permission Capabilities Engine', 
       // Attempt workflow transition to approved
       const res = await request(app)
         .post(`/entities/${appEntity.entity_id}/transition`)
-        .set('Authorization', `Bearer ${directorToken}`)
+        .set(authHeaders(directorToken))
         .send({ to_status: 'approved' });
 
       expect(res.statusCode).toBe(400);
@@ -541,7 +549,7 @@ describe('CIVIC-KALKI — Metadata-Hierarchy & Permission Capabilities Engine', 
 
       const res = await request(app)
         .post(`/entities/${appEntity.entity_id}/transition`)
-        .set('Authorization', `Bearer ${directorToken}`)
+        .set(authHeaders(directorToken))
         .send({ to_status: 'approved' });
 
       expect(res.statusCode).toBe(200);
@@ -562,7 +570,7 @@ describe('CIVIC-KALKI — Metadata-Hierarchy & Permission Capabilities Engine', 
 
       const res = await request(app)
         .post(`/entities/${appEntity.entity_id}/transition`)
-        .set('Authorization', `Bearer ${directorToken}`)
+        .set(authHeaders(directorToken))
         .send({ to_status: 'rejected', reason: 'Department rejection from fire authority' });
 
       expect(res.statusCode).toBe(200);
@@ -720,7 +728,7 @@ describe('CIVIC-KALKI — Metadata-Hierarchy & Permission Capabilities Engine', 
         // Transition through generic workflow engine
         const transRes = await request(app)
           .post(`/entities/${newEntity.entity_id}/transition`)
-          .set('Authorization', `Bearer ${citizenToken}`)
+          .set(authHeaders(citizenToken))
           .send({ to_status: 'submitted' });
 
         expect(transRes.statusCode).toBe(200);
