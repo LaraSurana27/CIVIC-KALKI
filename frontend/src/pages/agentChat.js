@@ -19,6 +19,7 @@
 import { requireAuth } from '../auth.js';
 import { renderLayout, attachLayoutEvents } from '../components/layout.js';
 import { agent as agentApi } from '../api.js';
+import { getStoredLocation, requestLocation, storeLocation, isLocationDismissed, dismissLocation, formatLocationForAgent } from '../utils/locationService.js';
 import { navigate } from '../router.js';
 
 // ── State (per-page-load, not persistent) ────────────────────────────────────
@@ -314,7 +315,9 @@ async function sendMessage(message, explicitFile = null) {
   appendHtml(renderThinkingBubble());
 
   try {
-    const res = await agentApi.chat(sessionId, cleanMsg, fileToUpload);
+    const _agentLoc = getStoredLocation();
+    const _locPfx = formatLocationForAgent(_agentLoc);
+    const res = await agentApi.chat(sessionId, _locPfx + cleanMsg, fileToUpload);
     removeThinking();
 
     const data = res.data;
@@ -555,7 +558,14 @@ export async function renderAgentChat(params = {}, searchParams = null) {
             Report problems · Upload photo evidence · Start initiatives · Check request status
           </div>
         </div>
-        <div style="margin-left:auto;">
+        <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+          <div id="agent-loc-status" style="display:none; font-size:0.72rem; color:var(--text-muted); align-items:center; gap:4px;">
+            <svg width="11" height="11" fill="none" stroke="#ff5a36" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            <span id="agent-loc-text"></span>
+          </div>
+          <button type="button" id="agent-loc-btn" class="btn btn-ghost btn-sm" title="Share your location for better help" style="font-size:0.72rem; padding:4px 10px; display:none;">
+            📍 Share location
+          </button>
           <a href="/dashboard" class="btn btn-ghost btn-sm">← Dashboard</a>
         </div>
       </div>
@@ -610,6 +620,34 @@ export async function renderAgentChat(params = {}, searchParams = null) {
     </div>
   `, 'Civic Assistant');
   attachLayoutEvents();
+
+  // ── Location button wiring ────────────────────────────────────────────────
+  const _locBtn    = document.getElementById('agent-loc-btn');
+  const _locStatus = document.getElementById('agent-loc-status');
+  const _locText   = document.getElementById('agent-loc-text');
+
+  function _showLocStatus(loc) {
+    if (_locStatus) { _locStatus.style.display = 'flex'; }
+    if (_locText) _locText.textContent = loc.area;
+    if (_locBtn) _locBtn.style.display = 'none';
+  }
+
+  const _initLoc = getStoredLocation();
+  if (_initLoc) {
+    _showLocStatus(_initLoc);
+  } else if (!isLocationDismissed()) {
+    if (_locBtn) _locBtn.style.display = '';
+  }
+
+  _locBtn?.addEventListener('click', async () => {
+    if (_locBtn) { _locBtn.textContent = '⏳ Detecting…'; _locBtn.disabled = true; }
+    try {
+      const loc = await requestLocation();
+      _showLocStatus(loc);
+    } catch {
+      if (_locBtn) { _locBtn.textContent = '📍 Share location'; _locBtn.disabled = false; }
+    }
+  });
 
   // ── Wire input events ──────────────────────────────────────────────────────
   const inputEl = document.getElementById('agent-input');

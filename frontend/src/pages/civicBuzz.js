@@ -334,11 +334,11 @@ function updateCardInGrid(updatedPost) {
   const statsLine = card.querySelector('.ck-buzz-card-stats-line');
   if (statsLine) {
     statsLine.innerHTML = `
-      <span>👁 ${updatedPost.views_count || 0} views</span>
+      <span style="display:inline-flex; align-items:center; gap:4px;">${BI.eye(13, '#64748b')} ${updatedPost.views_count || 0} views</span>
       <span>·</span>
-      <span>⬆ ${updatedPost.vote_count || 0} upvotes</span>
+      <span style="display:inline-flex; align-items:center; gap:3px;">${BI.arrowUp(13, '#64748b')} ${updatedPost.vote_count || 0} upvotes</span>
       <span>·</span>
-      <span>↗ ${updatedPost.shares_count || 0} shares</span>
+      <span style="display:inline-flex; align-items:center; gap:4px;">${BI.share(13, '#64748b')} ${updatedPost.shares_count || 0} shares</span>
     `;
   }
 }

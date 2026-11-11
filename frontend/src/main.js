@@ -33,6 +33,7 @@ addRoute('/governance', renderGovernanceIntelligence);
 addRoute('/modules', renderModules);
 addRoute('/entities', renderEntities);
 addRoute('/entities/new', renderEntityNew);
+addRoute('/report', renderEntityNew);
 addRoute('/entities/:id', renderEntityDetail);
 addRoute('/nearby', renderNearbyProtests);
 addRoute('/protests/nearby', renderNearbyProtests);

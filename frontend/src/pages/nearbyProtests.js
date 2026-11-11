@@ -48,14 +48,23 @@ export async function renderNearbyProtests() {
               <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
               Find Protests Near Me
             </button>
-            <div style="display:flex; align-items:center; gap:8px; font-size:12px; color:#cbd5e1;">
-              <span>Search Radius:</span>
-              <select id="select-radius" style="background:#334155; color:#fff; border:1px solid #475569; border-radius:6px; padding:4px 8px; font-size:12px; font-weight:600; cursor:pointer;">
-                <option value="5">5 km</option>
-                <option value="10" selected>10 km (Default)</option>
-                <option value="25">25 km</option>
-                <option value="50">50 km (Max)</option>
-              </select>
+            <div style="display:flex; align-items:center; gap:12px; font-size:12px; color:#cbd5e1; flex-wrap:wrap;">
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span>Filter:</span>
+                <select id="select-filter-mode" style="background:#334155; color:#fff; border:1px solid #475569; border-radius:6px; padding:4px 8px; font-size:12px; font-weight:600; cursor:pointer;">
+                  <option value="all">All Nearby</option>
+                  <option value="trending">🔥 Trending</option>
+                </select>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span>Search Radius:</span>
+                <select id="select-radius" style="background:#334155; color:#fff; border:1px solid #475569; border-radius:6px; padding:4px 8px; font-size:12px; font-weight:600; cursor:pointer;">
+                  <option value="5">5 km</option>
+                  <option value="10" selected>10 km (Default)</option>
+                  <option value="25">25 km</option>
+                  <option value="50">50 km (Max)</option>
+                </select>
+              </div>
             </div>
           </div>
         </div>
@@ -113,11 +122,18 @@ function initNearbyView() {
   const mapEl = document.getElementById('nearby-map');
   const detectBtn = document.getElementById('btn-detect-location');
   const radiusSelect = document.getElementById('select-radius');
+  const filterSelect = document.getElementById('select-filter-mode');
   const listEl = document.getElementById('nearby-results-list');
   const countBadge = document.getElementById('results-count-badge');
   const statusPill = document.getElementById('map-status-pill');
 
+  const searchParams = new URLSearchParams(window.location.search);
+  if (searchParams.get('filter') === 'trending' && filterSelect) {
+    filterSelect.value = 'trending';
+  }
+
   let currentCoords = null;
+  let allFetchedItems = [];
 
   // Initialize Map
   if (mapEl) {
@@ -157,7 +173,11 @@ function initNearbyView() {
 
     try {
       const res = await apiEntities.nearby(lat, lng, radiusKm);
-      const items = res.data || [];
+      allFetchedItems = res.data || [];
+      const isTrending = filterSelect?.value === 'trending';
+      const items = isTrending
+        ? [...allFetchedItems].sort((a, b) => ((b.citizens_count || b.entity_id) - (a.citizens_count || a.entity_id)))
+        : allFetchedItems;
 
       if (countBadge) {
         countBadge.textContent = `${items.length} found`;

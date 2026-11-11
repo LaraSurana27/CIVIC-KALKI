@@ -2,17 +2,12 @@
  * CIVIC-KALKI — Civic Buzz Swipeable Carousel Component
  * Displayed in the Dashboard right-hand sidebar.
  *
- * Features:
- * - 1 card at a time with a peek of the next card
- * - Arrow navigation buttons (< and >)
- * - Touch & mouse drag swiping
- * - Animated dot indicators
- * - 5-second auto-rotation with hover pause
- * - Overlaid bold meme-style caption
- * - Real honest metrics: views, upvotes, shares
- * - Action buttons: "View Issue" (logs click_issue) and "Share" (logs share)
- * - View event logging when a card is shown
- * - Header and card image click opens the full-page gallery (/buzz)
+ * Requirements:
+ * - 1 slide at a time with a single set of controls (dots + one pause button, no duplicate arrows)
+ * - Hide any metric that is 0
+ * - Fit/clamp the caption inside the card
+ * - Make the whole card the click target with Share as a small icon
+ * - "See all" links to the Buzz page (/buzz)
  */
 
 import { buzz } from '../api.js';
@@ -45,26 +40,10 @@ export function renderCivicBuzzCardHtml() {
           </div>
           <div class="ck-buzz-brand-sub">Youth-powered civic conversations</div>
         </div>
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <button type="button" class="ck-buzz-nav-arrow" id="ck-buzz-prev-btn" aria-label="Previous Buzz Card" title="Previous">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-          </button>
-          <button type="button" class="ck-buzz-nav-arrow" id="ck-buzz-next-btn" aria-label="Next Buzz Card" title="Next">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-          </button>
-        </div>
       </div>
 
-      <!-- Viewport & Track -->
+      <!-- Viewport & Track (1 card at a time, no duplicate overlay arrows) -->
       <div class="ck-buzz-viewport" id="ck-buzz-viewport">
-        <!-- Floating circular nav arrows on photo -->
-        <button type="button" class="ck-buzz-arrow-overlay prev" id="ck-buzz-overlay-prev-btn" aria-label="Previous Buzz Card" title="Previous">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
-        <button type="button" class="ck-buzz-arrow-overlay next" id="ck-buzz-overlay-next-btn" aria-label="Next Buzz Card" title="Next">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
-
         <div class="ck-buzz-track" id="ck-buzz-track">
           <!-- Loading State -->
           <div class="ck-buzz-loading-box">
@@ -74,11 +53,17 @@ export function renderCivicBuzzCardHtml() {
         </div>
       </div>
 
-      <!-- Dot Indicators & Footer Explore Link -->
-      <div class="ck-buzz-footer-row">
-        <div class="ck-buzz-dots" id="ck-buzz-dots"></div>
+      <!-- Single Control Set: Dot Indicators + One Pause Button & See All Link -->
+      <div class="ck-buzz-footer-row" style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div class="ck-buzz-dots" id="ck-buzz-dots"></div>
+          <button type="button" class="ck-buzz-pause-btn" id="ck-buzz-pause-btn" title="Pause auto-rotate" aria-label="Pause auto-rotate">
+            <svg class="ck-buzz-pause-icon" width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="4" width="4" height="16" rx="1"/><rect x="15" y="4" width="4" height="16" rx="1"/></svg>
+            <svg class="ck-buzz-play-icon" style="display:none;" width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+          </button>
+        </div>
         <a href="/buzz" class="ck-buzz-gallery-link" id="ck-buzz-explore-link">
-          Explore all →
+          See all →
         </a>
       </div>
     </div>
@@ -92,22 +77,19 @@ export async function initCivicBuzzCarousel() {
   const container = document.getElementById('ck-buzz-carousel-container');
   const track = document.getElementById('ck-buzz-track');
   const dotsContainer = document.getElementById('ck-buzz-dots');
-  const prevBtn = document.getElementById('ck-buzz-prev-btn');
-  const nextBtn = document.getElementById('ck-buzz-next-btn');
+  const pauseBtn = document.getElementById('ck-buzz-pause-btn');
   const headerClick = document.getElementById('ck-buzz-header-click');
 
   if (!container || !track) return;
 
-  // Header click opens full-page gallery
-  headerClick?.addEventListener('click', (e) => {
-    // Prevent trigger if clicking arrow buttons
-    if (e.target.closest('.ck-buzz-nav-arrow')) return;
+  headerClick?.addEventListener('click', () => {
     navigate('/buzz');
   });
 
   let posts = [];
   let currentIndex = 0;
   let autoRotateTimer = null;
+  let isUserPaused = false;
   const viewedPostIds = new Set();
 
   try {
@@ -142,7 +124,7 @@ export async function initCivicBuzzCarousel() {
     return;
   }
 
-  // Render carousel cards
+  // Render carousel cards: WHOLE CARD IS CLICKABLE TARGET, Share is small floating icon
   track.innerHTML = posts.map((post, idx) => {
     const img = post.image_url || DEFAULT_BG;
     const title = post.linked_title || post.caption;
@@ -153,16 +135,36 @@ export async function initCivicBuzzCarousel() {
     const joins = post.joins_count || 0;
     const isInitiative = post.template === 'initiative' || post.linked_type === 'initiative';
 
+    // Hide any metric that is 0, format cleanly into a single subtitle stats line
+    const metricParts = [];
+    if (subtitle) metricParts.push(escapeHtml(subtitle));
+    if (views > 0) metricParts.push(`${views} views`);
+    if (isInitiative && joins > 0) {
+      metricParts.push(`${joins} joined`);
+    } else if (upvotes > 0) {
+      metricParts.push(`${upvotes} upvote${upvotes > 1 ? 's' : ''}`);
+    }
+    if (shares > 0) metricParts.push(`${shares} share${shares > 1 ? 's' : ''}`);
+
+    const subStatsText = metricParts.join(' · ');
+
     return `
-      <div class="ck-buzz-slide" data-index="${idx}" data-post-id="${post.id}">
-        <!-- Image Card with Bold Meme-style Caption Overlay -->
-        <div class="ck-buzz-img-box" data-action="open-gallery" style="cursor: pointer;">
+      <div class="ck-buzz-slide" data-index="${idx}" data-post-id="${post.id}" data-linked-id="${post.linked_id || ''}" style="cursor: pointer;" title="View ${escapeHtml(title)}">
+        <!-- Image Card with Bold Meme-style Clamped Caption Overlay & Floating Small Share Button -->
+        <div class="ck-buzz-img-box" style="position: relative;">
           <img src="${escapeHtml(img)}" alt="${escapeHtml(post.caption)}" class="ck-buzz-img" onerror="this.src='${DEFAULT_BG}'" />
           <div class="ck-buzz-scrim"></div>
           
-          <div class="ck-buzz-meme-caption">
+          <!-- Small Floating Share Button in top-right -->
+          <button type="button" class="ck-buzz-share-floating" data-action="share-post" data-post-id="${post.id}" data-caption="${escapeHtml(post.caption)}" title="Share" aria-label="Share">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          </button>
+
+          <!-- Clamped Caption inside Card -->
+          <div class="ck-buzz-meme-caption" style="display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; text-overflow:ellipsis;">
             ${escapeHtml(post.caption)}
           </div>
+
           <div class="ck-buzz-badge-row">
             <span class="ck-buzz-pill-tag">
               ${isInitiative 
@@ -174,30 +176,27 @@ export async function initCivicBuzzCarousel() {
           </div>
         </div>
 
-        <!-- Issue Title & Honest Stats -->
+        <!-- Issue Title & Stats & Action Buttons -->
         <div class="ck-buzz-meta-box">
           <div class="ck-buzz-issue-title" title="${escapeHtml(title)}">
             ${escapeHtml(title)}
           </div>
-          ${subtitle ? `<div style="font-size:0.73rem; color:#64748b; margin-top:2px; font-weight:500;" class="ck-truncate">${escapeHtml(subtitle)}</div>` : ''}
-          <div class="ck-buzz-stats-line">
-            <span style="display:inline-flex; align-items:center; gap:3px;">${BI.eye(12)} ${views} views</span>
-            <span>·</span>
-            <span style="display:inline-flex; align-items:center; gap:3px;">${isInitiative && joins ? `${BI.handshake(12)} ${joins} joined` : `${BI.arrowUp(12)} ${upvotes} upvotes`}</span>
-            <span>·</span>
-            <span style="display:inline-flex; align-items:center; gap:3px;">${BI.share(12)} ${shares} shares</span>
+          <div style="font-size:0.84rem; color:#64748b; margin-top:3px; font-weight:500;" class="ck-truncate">
+            ${subStatsText || 'Civic Buzz'}
           </div>
-        </div>
-
-        <!-- Two Action Buttons: View Issue & Share -->
-        <div class="ck-buzz-btns-row">
-          <button type="button" class="ck-buzz-btn-issue" data-action="view-issue" data-post-id="${post.id}" data-linked-id="${post.linked_id}">
-            View Issue
-          </button>
-          <button type="button" class="ck-buzz-btn-share" data-action="share-post" data-post-id="${post.id}" data-caption="${escapeHtml(post.caption)}">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-            <span>Share</span>
-          </button>
+          <div class="ck-buzz-actions-row" style="display:flex; align-items:center; justify-content:space-between; margin-top:12px; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+              <button type="button" class="btn btn-secondary btn-sm ck-buzz-action-btn" data-action="upvote-post" data-post-id="${post.id}" style="font-size:0.82rem; font-weight:600; padding:5px 12px; border-radius:6px; display:inline-flex; align-items:center; gap:4px; height:30px; background:#f8fafc; border:1px solid #e2e8f0; color:#334155; cursor:pointer; white-space:nowrap;">
+                <span>↑</span> Upvote
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm ck-buzz-action-btn" data-action="follow-post" data-post-id="${post.id}" style="font-size:0.82rem; font-weight:600; padding:5px 12px; border-radius:6px; display:inline-flex; align-items:center; gap:4px; height:30px; background:#f8fafc; border:1px solid #e2e8f0; color:#334155; cursor:pointer; white-space:nowrap;">
+                <span>+</span> Follow
+              </button>
+            </div>
+            <a href="${post.linked_id ? `/entities/${post.linked_id}` : `/buzz/${post.id}`}" class="ck-buzz-view-issue-link" data-action="view-issue" style="font-size:0.85rem; color:#ff5a36; font-weight:700; text-decoration:none; white-space:nowrap; flex-shrink:0;">
+              View issue →
+            </a>
+          </div>
         </div>
       </div>
     `;
@@ -208,24 +207,16 @@ export async function initCivicBuzzCarousel() {
     <span class="ck-buzz-dot ${i === 0 ? 'active' : ''}" data-dot-index="${i}"></span>
   `).join('');
 
-  // Update carousel position & log view event
   function updateSlide(newIndex) {
     if (posts.length === 0) return;
     currentIndex = (newIndex + posts.length) % posts.length;
 
-    // Slide step: each slide is calc(100% - 24px) with 12px gap
-    const slideEl = track.querySelector('.ck-buzz-slide');
-    if (slideEl) {
-      const slideWidth = slideEl.offsetWidth + 12; // slide width + gap
-      track.style.transform = `translateX(-${currentIndex * slideWidth}px)`;
-    }
+    track.style.transform = `translateX(-${currentIndex * 100}%)`;
 
-    // Update dot classes
     container.querySelectorAll('.ck-buzz-dot').forEach((dot, idx) => {
       dot.classList.toggle('active', idx === currentIndex);
     });
 
-    // Log view event for active card once per session
     const activePost = posts[currentIndex];
     if (activePost && !viewedPostIds.has(activePost.id)) {
       viewedPostIds.add(activePost.id);
@@ -233,26 +224,7 @@ export async function initCivicBuzzCarousel() {
     }
   }
 
-  // Initial view log for the first card
   updateSlide(0);
-
-  // Arrow button events (header arrows + floating overlay arrows)
-  const overlayPrev = document.getElementById('ck-buzz-overlay-prev-btn');
-  const overlayNext = document.getElementById('ck-buzz-overlay-next-btn');
-
-  const onPrev = (e) => {
-    e.stopPropagation();
-    updateSlide(currentIndex - 1);
-  };
-  const onNext = (e) => {
-    e.stopPropagation();
-    updateSlide(currentIndex + 1);
-  };
-
-  prevBtn?.addEventListener('click', onPrev);
-  nextBtn?.addEventListener('click', onNext);
-  overlayPrev?.addEventListener('click', onPrev);
-  overlayNext?.addEventListener('click', onNext);
 
   // Dots click events
   dotsContainer.addEventListener('click', (e) => {
@@ -262,9 +234,32 @@ export async function initCivicBuzzCarousel() {
     if (!isNaN(idx)) updateSlide(idx);
   });
 
-  // ── Auto-rotate every 1.8 seconds (1-2s as requested, pause on hover) ──
+  // Pause / Play toggle button
+  pauseBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    isUserPaused = !isUserPaused;
+    const pauseIcon = pauseBtn.querySelector('.ck-buzz-pause-icon');
+    const playIcon = pauseBtn.querySelector('.ck-buzz-play-icon');
+
+    if (isUserPaused) {
+      stopAutoRotate();
+      pauseBtn.classList.add('paused');
+      pauseBtn.title = 'Play auto-rotate';
+      if (pauseIcon) pauseIcon.style.display = 'none';
+      if (playIcon) playIcon.style.display = 'inline-block';
+    } else {
+      startAutoRotate();
+      pauseBtn.classList.remove('paused');
+      pauseBtn.title = 'Pause auto-rotate';
+      if (pauseIcon) pauseIcon.style.display = 'inline-block';
+      if (playIcon) playIcon.style.display = 'none';
+    }
+  });
+
+  // Auto-rotate every 1.8 seconds (pauses on user pause or hover)
   function startAutoRotate() {
     stopAutoRotate();
+    if (isUserPaused) return;
     autoRotateTimer = setInterval(() => {
       updateSlide(currentIndex + 1);
     }, 1800);
@@ -278,15 +273,14 @@ export async function initCivicBuzzCarousel() {
   }
 
   startAutoRotate();
-  container.addEventListener('mouseenter', stopAutoRotate);
-  container.addEventListener('mouseleave', startAutoRotate);
+  container.addEventListener('mouseenter', () => { if (!isUserPaused) stopAutoRotate(); });
+  container.addEventListener('mouseleave', () => { if (!isUserPaused) startAutoRotate(); });
 
-  // ── Touch & Mouse Swipe Handlers ──
+  // Touch & Mouse Swipe Handlers
   let startX = 0;
   let isDragging = false;
   const viewport = document.getElementById('ck-buzz-viewport');
 
-  // Touch
   viewport?.addEventListener('touchstart', (e) => {
     stopAutoRotate();
     startX = e.touches[0].clientX;
@@ -298,10 +292,9 @@ export async function initCivicBuzzCarousel() {
       if (diff > 0) updateSlide(currentIndex - 1);
       else updateSlide(currentIndex + 1);
     }
-    startAutoRotate();
+    if (!isUserPaused) startAutoRotate();
   }, { passive: true });
 
-  // Mouse Drag
   viewport?.addEventListener('mousedown', (e) => {
     isDragging = true;
     startX = e.clientX;
@@ -316,21 +309,11 @@ export async function initCivicBuzzCarousel() {
       if (diff > 0) updateSlide(currentIndex - 1);
       else updateSlide(currentIndex + 1);
     }
-    startAutoRotate();
+    if (!isUserPaused) startAutoRotate();
   });
 
-  // ── Button Delegations: View Issue, Share, and Image Click ──
+  // Whole-card click delegation + floating share button
   track.addEventListener('click', (e) => {
-    const issueBtn = e.target.closest('[data-action="view-issue"]');
-    if (issueBtn) {
-      e.stopPropagation();
-      const postId = issueBtn.getAttribute('data-post-id');
-      const linkedId = issueBtn.getAttribute('data-linked-id');
-      if (postId) buzz.logEvent(Number(postId), 'click_issue').catch(() => {});
-      if (linkedId) navigate(`/entities/${linkedId}`);
-      return;
-    }
-
     const shareBtn = e.target.closest('[data-action="share-post"]');
     if (shareBtn) {
       e.stopPropagation();
@@ -344,11 +327,50 @@ export async function initCivicBuzzCarousel() {
       return;
     }
 
-    const imgBox = e.target.closest('[data-action="open-gallery"]');
-    if (imgBox) {
+    const upvoteBtn = e.target.closest('[data-action="upvote-post"]');
+    if (upvoteBtn) {
       e.stopPropagation();
-      navigate('/buzz');
+      const postId = Number(upvoteBtn.getAttribute('data-post-id'));
+      buzz.vote(postId)
+        .then(() => {
+          toastSuccess('Upvoted civic buzz!');
+          upvoteBtn.innerHTML = '<span>✓</span> Upvoted';
+          upvoteBtn.style.color = '#ff5a36';
+        })
+        .catch(() => toast('You already supported this post.'));
+      return;
+    }
+
+    const followBtn = e.target.closest('[data-action="follow-post"]');
+    if (followBtn) {
+      e.stopPropagation();
+      toastSuccess('Following updates on this issue!');
+      followBtn.innerHTML = '<span>✓</span> Following';
+      followBtn.style.color = '#10b981';
+      return;
+    }
+
+    const viewIssueLink = e.target.closest('[data-action="view-issue"]');
+    if (viewIssueLink) {
+      e.stopPropagation();
+      e.preventDefault();
+      const href = viewIssueLink.getAttribute('href');
+      if (href) navigate(href);
+      return;
+    }
+
+    const slide = e.target.closest('.ck-buzz-slide');
+    if (slide) {
+      const linkedId = slide.getAttribute('data-linked-id');
+      const postId = slide.getAttribute('data-post-id');
+      if (postId) buzz.logEvent(Number(postId), 'click_issue').catch(() => {});
+      if (linkedId && linkedId !== '' && linkedId !== 'null' && linkedId !== 'undefined') {
+        navigate(`/entities/${linkedId}`);
+      } else if (postId) {
+        navigate(`/buzz/${postId}`);
+      } else {
+        navigate('/buzz');
+      }
     }
   });
 }
-

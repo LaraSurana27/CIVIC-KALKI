@@ -751,5 +751,123 @@ describe('Document and Photo Upload & Binding', () => {
     expect(res.statusCode).toBe(200);
     expect(res.body.success).toBe(true);
   });
-});
+  test('location from [User location: ...] is included in confirmation summary and saved to entity', async () => {
+    prisma.entity.create.mockResolvedValue({
+      entity_id: 101, name: 'Streetlights Grievance', status: 'draft',
+      entityType: { entity_type_id: 2, name: 'Grievance' },
+    });
+    prisma.entity.update.mockResolvedValue({ entity_id: 101, status: 'submitted' });
+    prisma.$transaction.mockResolvedValue([]);
+    prisma.auditLog.create.mockResolvedValue({ audit_id: 101 });
 
+    const sid = 'loc-test-' + Date.now();
+    _sessions.set(sid, {
+      phase: 'collecting', capability: 'Grievance', entityTypeId: 2, formId: 3,
+      formSchema: {}, requiredParams: [{ parameter_id: 12, field_key: 'complaint_details', label: 'Complaint Details', mandatory: true }],
+      allTextParams: [{ parameter_id: 12, field_key: 'complaint_details', label: 'Complaint Details', field_type: 'textarea', mandatory: true }],
+      fileParams: [], pendingFiles: [], draft: {},
+      location: null, area: null, latitude: null, longitude: null,
+      conversationHistory: [], userId: CITIZEN_USER_ID, userRole: 'citizen', _timer: null,
+    });
+
+    const { GoogleGenerativeAI } = require('@google/generative-ai');
+    GoogleGenerativeAI.mockImplementation(() => ({
+      getGenerativeModel: () => ({
+        generateContent: jest.fn().mockResolvedValue({
+          response: { text: () => JSON.stringify({
+            extracted_values: { '12': 'Streetlights are broken' },
+            location: 'JM Road, Shivajinagar',
+            area: 'Shivajinagar',
+            next_question: null,
+            ready_for_confirmation: true,
+          })},
+        }),
+      }),
+    }));
+
+    // User message with device location
+    const msg = '[User location: FC Road, Shivajinagar (18.5204°N, 73.8567°E)] streetlights are completely broken on JM Road';
+    const result = await continueFormFilling(sid, msg, TEST_USER);
+
+    expect(result.type).toBe('confirm');
+    expect(result.ready).toBe(true);
+
+    // Verify location is in the confirmation summary
+    const locRow = result.summary.find(s => s.label === 'Location / Landmark');
+    expect(locRow).toBeTruthy();
+    expect(locRow.value).toContain('JM Road');
+
+    // Confirm submission
+    const confirmRes = await continueFormFilling(sid, 'yes', TEST_USER);
+    expect(confirmRes.type).toBe('submitted');
+
+    // Verify entity was created with location and coordinates
+    expect(prisma.entity.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        location: expect.stringContaining('JM Road'),
+        area: 'Shivajinagar',
+        latitude: expect.any(Number),
+        longitude: expect.any(Number),
+      }),
+    }));
+  });
+  test('agent asks citizen for location when not explicitly mentioned in text despite device location', async () => {
+    const sid = 'ask-loc-test-' + Date.now();
+    _sessions.set(sid, {
+      phase: 'collecting', capability: 'Movement', entityTypeId: 1, formId: 2,
+      formSchema: {}, requiredParams: [{ parameter_id: 1, field_key: 'initiative_description', label: 'Initiative Description', mandatory: true }],
+      allTextParams: [{ parameter_id: 1, field_key: 'initiative_description', label: 'Initiative Description', field_type: 'textarea', mandatory: true }],
+      fileParams: [], pendingFiles: [], draft: {},
+      location: null, area: null, latitude: null, longitude: null, locationConfirmed: false,
+      conversationHistory: [], userId: CITIZEN_USER_ID, userRole: 'citizen', _timer: null,
+    });
+
+    const { GoogleGenerativeAI } = require('@google/generative-ai');
+    GoogleGenerativeAI.mockImplementation(() => ({
+      getGenerativeModel: () => ({
+        generateContent: jest.fn().mockResolvedValue({
+          response: { text: () => JSON.stringify({
+            extracted_values: { '1': 'Collect people for safety management concerns' },
+            location: null,
+            area: null,
+            location_confirmed: false,
+            next_question: null,
+            ready_for_confirmation: false,
+          })},
+        }),
+      }),
+    }));
+
+    // Message has device location Dhayari, but NO explicit target area in text
+    const msg = '[User location: Dhayari (18.4485°N, 73.8058°E)] Collect people for safety management concerns';
+    const result = await continueFormFilling(sid, msg, TEST_USER);
+
+    // Should ASK user for area/location, NOT confirm immediately
+    expect(result.type).toBe('question');
+    expect(result.text).toMatch(/area|location|bring this initiative into action|Dhayari/i);
+
+    // Citizen answers with specific target area (e.g. Shivajinagar)
+    GoogleGenerativeAI.mockImplementation(() => ({
+      getGenerativeModel: () => ({
+        generateContent: jest.fn().mockResolvedValue({
+          response: { text: () => JSON.stringify({
+            extracted_values: {},
+            location: 'Shivajinagar near Modern College',
+            area: 'Shivajinagar',
+            location_confirmed: true,
+            next_question: null,
+            ready_for_confirmation: true,
+          })},
+        }),
+      }),
+    }));
+
+    const answerRes = await continueFormFilling(sid, 'conduct in Shivajinagar', TEST_USER);
+    expect(answerRes.type).toBe('confirm');
+    expect(answerRes.ready).toBe(true);
+
+    const locRow = answerRes.summary.find(s => s.label === 'Location / Landmark');
+    expect(locRow).toBeTruthy();
+    expect(locRow.value).toMatch(/Shivajinagar/i);
+  });
+});

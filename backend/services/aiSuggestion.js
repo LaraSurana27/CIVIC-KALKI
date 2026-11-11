@@ -5,7 +5,7 @@
 
 const prisma = require('../db');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const GEMINI_MODEL = 'gemini-3.6-flash';
+const GEMINI_MODEL = 'gemini-3.5-flash-lite';
 
 /**
  * Clean raw model response by removing markdown code block fences if present.

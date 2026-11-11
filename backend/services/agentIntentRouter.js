@@ -120,7 +120,7 @@ async function routeIntent(message, conversationHistory = [], attachedFile = nul
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash-lite' });
   const promptText = buildIntentPrompt(message, conversationHistory, attachedFile);
 
   let parsed = null;

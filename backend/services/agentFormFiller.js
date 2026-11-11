@@ -26,6 +26,107 @@ const { routeIntent } = require('./agentIntentRouter');
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
+
+// ── Known Pune Coordinates for Landmark & Area Resolution ─────────────────────
+const PUNE_KNOWN_COORDINATES = {
+  'shivajinagar': { lat: 18.5204, lng: 73.8567, area: 'Shivajinagar' },
+  'fc road': { lat: 18.5246, lng: 73.8415, area: 'Shivajinagar' },
+  'fergusson': { lat: 18.5246, lng: 73.8415, area: 'Shivajinagar' },
+  'jm road': { lat: 18.5283, lng: 73.8475, area: 'Shivajinagar' },
+  'jungli maharaj': { lat: 18.5283, lng: 73.8475, area: 'Shivajinagar' },
+  'model colony': { lat: 18.5326, lng: 73.8340, area: 'Shivajinagar' },
+  'dhayari': { lat: 18.4485, lng: 73.8058, area: 'Dhayari' },
+  'sinhagad road': { lat: 18.4720, lng: 73.8240, area: 'Sinhagad Road' },
+  'vadgaon': { lat: 18.4680, lng: 73.8320, area: 'Vadgaon' },
+  'warje': { lat: 18.4800, lng: 73.8000, area: 'Warje' },
+  'kothrud': { lat: 18.5074, lng: 73.8077, area: 'Kothrud' },
+  'karve road': { lat: 18.5020, lng: 73.8180, area: 'Kothrud' },
+  'karve statue': { lat: 18.5020, lng: 73.8180, area: 'Kothrud' },
+  'baner': { lat: 18.5590, lng: 73.7868, area: 'Baner' },
+  'aundh': { lat: 18.5580, lng: 73.8075, area: 'Aundh' },
+  'viman nagar': { lat: 18.5679, lng: 73.9143, area: 'Viman Nagar' },
+  'hadapsar': { lat: 18.5089, lng: 73.9259, area: 'Hadapsar' },
+  'camp': { lat: 18.5173, lng: 73.8804, area: 'Pune Camp' },
+  'mg road': { lat: 18.5173, lng: 73.8804, area: 'Pune Camp' },
+  'swargate': { lat: 18.5018, lng: 73.8636, area: 'Swargate' },
+  'deccan': { lat: 18.5177, lng: 73.8415, area: 'Deccan Gymkhana' },
+  'wakad': { lat: 18.5987, lng: 73.7688, area: 'Wakad' },
+  'hinjewadi': { lat: 18.5913, lng: 73.7389, area: 'Hinjewadi' },
+  'pimpri': { lat: 18.6279, lng: 73.8009, area: 'Pimpri-Chinchwad' },
+  'chinchwad': { lat: 18.6298, lng: 73.7997, area: 'Pimpri-Chinchwad' },
+  'katraj': { lat: 18.4575, lng: 73.8677, area: 'Katraj' },
+  'yerwada': { lat: 18.5529, lng: 73.8797, area: 'Yerwada' },
+  'kalyani nagar': { lat: 18.5463, lng: 73.9033, area: 'Kalyani Nagar' },
+  'magarpatta': { lat: 18.5158, lng: 73.9272, area: 'Hadapsar' },
+  'senapati bapat': { lat: 18.5308, lng: 73.8291, area: 'Shivajinagar' },
+  'sb road': { lat: 18.5308, lng: 73.8291, area: 'Shivajinagar' },
+  'law college': { lat: 18.5167, lng: 73.8299, area: 'Erandwane' },
+  'erandwane': { lat: 18.5100, lng: 73.8300, area: 'Erandwane' },
+};
+
+function parseDeviceLocation(message) {
+  if (!message) return null;
+  const match = message.match(/\[(?:User )?location:\s*([^()\]]+?)(?:\s*\(([0-9.-]+)[°]?[NS]?,\s*([0-9.-]+)[°]?[EW]?\))?\]/i);
+  if (!match) return null;
+  const rawArea = match[1].trim();
+  const lat = match[2] ? parseFloat(match[2]) : null;
+  const lng = match[3] ? parseFloat(match[3]) : null;
+  const parts = rawArea.split(',').map(s => s.trim()).filter(Boolean);
+  const area = parts.length > 1 ? parts[parts.length - 1] : rawArea;
+  return {
+    location: rawArea,
+    area: area,
+    latitude: lat,
+    longitude: lng,
+  };
+}
+
+
+function hasExplicitLocationInText(text) {
+  if (!text) return false;
+  // Strip out [User location: ...] tag before analyzing citizen's actual message
+  const clean = text.replace(/\[(?:User )?location:[^\]]+\]/gi, '').trim().toLowerCase();
+  if (!clean) return false;
+
+  // Check if citizen text mentions any known Pune localities
+  for (const key of Object.keys(PUNE_KNOWN_COORDINATES)) {
+    if (clean.includes(key)) return true;
+  }
+
+  // Check for common affirmative confirmation of suggested area
+  if (/^(?:yes|yeah|sure|yep|correct|in this area|same area|here|conduct here|do it here)\b/i.test(clean)) {
+    return true;
+  }
+
+  // Check for common location prepositions followed by place names
+  if (/(?:at|in|near|on|behind|opposite|outside|around)\s+[a-z0-9\s]{2,25}(?:road|street|nagar|colony|gate|chowk|station|college|park|bridge|lane|ward|area|pune|campus|market|bazaar)/i.test(clean)) {
+    return true;
+  }
+
+  return false;
+}
+
+function resolveLocationAndCoords(extractedLoc, extractedArea, deviceLoc) {
+  let location = extractedLoc || (deviceLoc ? deviceLoc.location : null);
+  let area = extractedArea || (deviceLoc ? deviceLoc.area : null);
+  let lat = deviceLoc ? deviceLoc.latitude : null;
+  let lng = deviceLoc ? deviceLoc.longitude : null;
+
+  if (location) {
+    const locLower = location.toLowerCase();
+    for (const [key, val] of Object.entries(PUNE_KNOWN_COORDINATES)) {
+      if (locLower.includes(key)) {
+        if (!area || area.toLowerCase() === 'pune') area = val.area;
+        lat = val.lat;
+        lng = val.lng;
+        break;
+      }
+    }
+  }
+
+  return { location, area, latitude: lat, longitude: lng };
+}
+
 const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 // Field types that represent file/photo attachments
@@ -86,6 +187,11 @@ function createSession(sessionId, userId, userRole) {
     fileParams: [],
     pendingFiles: [],
     draft: {},
+    location: null,
+    area: null,
+    latitude: null,
+    longitude: null,
+    locationConfirmed: false,
     conversationHistory: [],
     userId,
     userRole,
@@ -284,14 +390,14 @@ async function resolveEntityTypeId(capabilityName) {
  * @param {Array}  allTextParams
  * @param {string} fallbackMessage
  */
-function synthesizeEntityName(capability, draft, allTextParams, fallbackMessage = '') {
+function synthesizeEntityName(capability, draft, allTextParams, fallbackMessage = '', sessionLocation = null) {
   // Try to find a location or category value to make a meaningful name
   const paramByKey = {};
   for (const p of allTextParams) {
     paramByKey[p.field_key] = draft[p.parameter_id];
   }
 
-  const location = paramByKey['location'] || paramByKey['area'] || paramByKey['landmark'] || null;
+  const location = sessionLocation || paramByKey['location'] || paramByKey['area'] || paramByKey['landmark'] || null;
   const category = paramByKey['category'] || paramByKey['initiative_type'] || null;
 
   if (capability === 'Grievance') {
@@ -331,7 +437,7 @@ function buildFormFillPrompt(session, userMessage, attachedFile = null) {
       const val = session.draft[p.parameter_id];
       return `- ${p.label}: ${val !== undefined ? `"${val}"` : '(not yet filled)'} ${p.mandatory ? '[REQUIRED]' : '[optional]'}`;
     })
-    .join('\n');
+    .join('\n') + `\n- Incident Location / Landmark: ${session.location ? `"${session.location}"` : '(not yet specified)'} [REQUIRED]`;
 
   const missingRequired = session.requiredParams.filter(p => session.draft[p.parameter_id] === undefined);
 
@@ -386,11 +492,20 @@ INSTRUCTIONS:
 1. Extract ANY parameter values present in the citizen's message or observable in the attached photo/document. Map them to the correct integer parameter_id.
    For select/dropdown fields, normalize the value to the closest valid choice listed above.
    Use the integer parameter_id as the string key in extracted_values.
-2. If all REQUIRED parameters are now filled (including any just extracted), set ready_for_confirmation to true and next_question to null.
-3. If there are still missing REQUIRED parameters, ask for the SINGLE MOST IMPORTANT missing one.
-   Ask in plain, friendly language. Do NOT dump a list of all missing fields. ONE question only.
-4. For location/area information, use a specific parameter if it exists, or note it for the entity name.
-5. If the citizen provided a value for an OPTIONAL field, capture it. But only ask about optional fields if all required ones are filled.
+2. LOCATION IS A MANDATORY ATTRIBUTE AND MUST BE CONFIRMED WITH THE CITIZEN:
+   - A citizen may currently be in one area (e.g. Dhayari) but conduct an initiative or lodge a complaint for ANY other area (e.g. Shivajinagar, Kothrud, Camp, FC Road, etc.).
+   - NEVER silently assume the incident or initiative takes place at the device location without the citizen's explicit confirmation!
+   - Did the citizen's text explicitly specify or confirm where this takes place? (e.g. "on JM Road", "in Kothrud", "in Dhayari", "conduct at FC Road", "yes in Dhayari")
+     * If YES: Set "location" to that place, "area" to the neighborhood, and "location_confirmed": true.
+     * If NO:
+       - Set "location_confirmed": false.
+       - Do NOT set ready_for_confirmation to true!
+       - In "next_question", ask the citizen at what area or location they would like to conduct this initiative or where the issue occurred:
+         For an initiative: "At what area or location would you like to bring this into action? (We noticed your location is [detected area] — would you like to conduct it in [detected area], or somewhere else like FC Road or Kothrud?)"
+         For a grievance: "At what location or street did this issue occur? (We noticed your location is [detected area] — did this happen in [detected area], or at another street/landmark?)"
+3. If all REQUIRED parameters AND location are confirmed by the citizen, set ready_for_confirmation to true and next_question to null.
+4. If there are still missing REQUIRED parameters or unconfirmed location, ask for the SINGLE MOST IMPORTANT missing one. ONE question only.
+5. If the citizen provided a value for an OPTIONAL field, capture it.
 
 MISSING REQUIRED PARAMETERS (ask about these first, one at a time):
 ${missingRequired.map(p => `- ${p.label} (parameter_id: ${p.parameter_id})`).join('\n') || '(none — all required fields are filled)'}
@@ -400,7 +515,10 @@ Respond with ONLY a single raw valid JSON object. No markdown, no extra text.
 Required schema:
 {
   "extracted_values": { "<parameter_id_as_string>": "<value>" },
-  "next_question": "<string question to ask citizen, or null if all required fields filled>",
+  "location": "<specific incident street, address or landmark, or null if unknown>",
+  "area": "<neighborhood or ward name, or null>",
+  "location_confirmed": <true if citizen explicitly named or confirmed this place in text, otherwise false>,
+  "next_question": "<string question to ask citizen, or null if all required fields and location are confirmed>",
   "ready_for_confirmation": <true|false>
 }
 `.trim();
@@ -420,7 +538,8 @@ async function extractFormValues(session, userMessage, attachedFile = null) {
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
+  const CANDIDATE_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.8-flash'];
+  let model = genAI.getGenerativeModel({ model: CANDIDATE_MODELS[0] });
   const promptText = buildFormFillPrompt(session, userMessage, attachedFile);
 
   // Prepare multimodal content if an image file is attached
@@ -452,6 +571,9 @@ async function extractFormValues(session, userMessage, attachedFile = null) {
     }
     if (!parsed.extracted_values) parsed.extracted_values = {};
     if (parsed.next_question === undefined) parsed.next_question = null;
+    parsed.location = parsed.location || null;
+    parsed.area = parsed.area || null;
+    parsed.location_confirmed = Boolean(parsed.location_confirmed);
   } catch (err) {
     console.warn('[AGENT FORM FILL] Attempt 1 failed:', err.message);
     try {
@@ -465,13 +587,46 @@ async function extractFormValues(session, userMessage, attachedFile = null) {
       if (!parsed.extracted_values) parsed.extracted_values = {};
       if (parsed.next_question === undefined) parsed.next_question = null;
     } catch (err2) {
-      console.error('[AGENT FORM FILL] Attempt 2 failed:', err2.message);
-      // Safe fallback: ask for next missing required field manually
-      const nextMissing = session.requiredParams.find(p => session.draft[p.parameter_id] === undefined);
+      console.error('[AGENT FORM FILL] Gemini extraction failed, using resilient conversational recovery:', err2.message);
+      // Resilient fallback: If the assistant previously asked for a required parameter,
+      // bind the citizen's response directly to that parameter instead of discarding it!
+      const cleanUserMsg = userMessage.replace(/\[(?:User )?location:[^\]]+\]/gi, '').trim();
+      const currentMissing = session.requiredParams.find(p => session.draft[p.parameter_id] === undefined);
+      const extracted_values = {};
+
+      if (currentMissing && cleanUserMsg) {
+        extracted_values[String(currentMissing.parameter_id)] = cleanUserMsg;
+      }
+
+      // Check remaining missing fields
+      const nextMissing = session.requiredParams.find(p =>
+        session.draft[p.parameter_id] === undefined && String(p.parameter_id) !== String(currentMissing?.parameter_id)
+      );
+
+      const deviceLoc = parseDeviceLocation(userMessage);
+      const detectedArea = (deviceLoc && deviceLoc.location) ? deviceLoc.location : (session.area || 'Pune');
+
+      let nextQ = null;
+      if (nextMissing) {
+        if (nextMissing.options && Array.isArray(nextMissing.options.choices || nextMissing.options)) {
+          const choices = (nextMissing.options.choices || nextMissing.options).join(', ');
+          nextQ = `Understood! What is the ${nextMissing.label}? (Options: ${choices})`;
+        } else {
+          nextQ = `Understood! What is the ${nextMissing.label}?`;
+        }
+      } else if (!session.locationConfirmed) {
+        nextQ = session.capability === 'Movement'
+          ? `At what area or location would you like to bring this initiative into action? (I noticed your location is ${detectedArea} — would you like to conduct it in ${detectedArea}, or somewhere else like FC Road, Kothrud, or Shivajinagar?)`
+          : `At what area or location did this happen? (I noticed your location is ${detectedArea} — did this happen in ${detectedArea}, or at another street/landmark?)`;
+      }
+
       return {
-        extracted_values: {},
-        next_question: nextMissing ? `Could you tell me your ${nextMissing.label}?` : null,
-        ready_for_confirmation: !nextMissing,
+        extracted_values,
+        location: null,
+        area: null,
+        location_confirmed: false,
+        next_question: nextQ,
+        ready_for_confirmation: !nextMissing && session.locationConfirmed,
       };
     }
   }
@@ -495,6 +650,13 @@ function buildConfirmationSummary(session) {
       lines.push({ label: param.label, value: val, mandatory: param.mandatory, isFile: false });
     }
   }
+  // Prominently display incident location in the review summary table
+  if (session.location) {
+    lines.push({ label: 'Location / Landmark', value: session.location, mandatory: true, isFile: false });
+  } else if (session.area) {
+    lines.push({ label: 'Area / Neighborhood', value: session.area, mandatory: true, isFile: false });
+  }
+
   for (const pf of (session.pendingFiles || [])) {
     lines.push({ label: pf.label || 'Attached File', value: `📎 ${pf.originalName}`, mandatory: false, isFile: true });
   }
@@ -514,7 +676,7 @@ function buildConfirmationSummary(session) {
  * @returns {Promise<{entity_id:number, name:string, status:string, files?:Array<string>}>}
  */
 async function submitDraft(session, sessionId) {
-  const name = synthesizeEntityName(session.capability, session.draft, session.allTextParams);
+  const name = synthesizeEntityName(session.capability, session.draft, session.allTextParams, '', session.location);
 
   // Build location/area from draft if available
   const paramByKey = {};
@@ -525,13 +687,17 @@ async function submitDraft(session, sessionId) {
   const area = paramByKey['area'] || paramByKey['category'] || null;
 
   // 1. Create the entity (draft status, same as manual form)
+  const finalLocation = session.location ? String(session.location).trim() : (location ? String(location).trim() : null);
+  const finalArea = session.area ? String(session.area).trim() : (area ? String(area).trim() : null);
   const entity = await prisma.entity.create({
     data: {
       entity_type_id: session.entityTypeId,
       owner_user_id: session.userId,
       name: name.trim(),
-      location: location ? String(location).trim() : null,
-      area: area ? String(area).trim() : null,
+      location: finalLocation,
+      area: finalArea,
+      latitude: session.latitude != null ? session.latitude : null,
+      longitude: session.longitude != null ? session.longitude : null,
       status: 'draft',
     },
     include: {
@@ -772,6 +938,7 @@ async function continueFormFilling(sessionId, userMessage, user, priorIntentHist
     }
 
     // Immediately try to extract values from the first message + attachment
+    const deviceLoc = parseDeviceLocation(userMessage);
     const fillResult = await extractFormValues(session, userMessage, attachedFile);
 
     // Merge extracted values into draft
@@ -780,6 +947,41 @@ async function continueFormFilling(sessionId, userMessage, user, priorIntentHist
       if (!isNaN(paramId) && value !== null && value !== '') {
         session.draft[paramId] = value;
       }
+    }
+
+    // Check if citizen explicitly specified or confirmed location in their text
+    const isExplicitLocation = hasExplicitLocationInText(userMessage) || Boolean(fillResult.location_confirmed);
+
+    if (isExplicitLocation) {
+      session.locationConfirmed = true;
+      const resolvedLoc = resolveLocationAndCoords(fillResult.location, fillResult.area, deviceLoc);
+      if (resolvedLoc.location) {
+        session.location = resolvedLoc.location;
+        session.area = resolvedLoc.area;
+        if (resolvedLoc.latitude != null) session.latitude = resolvedLoc.latitude;
+        if (resolvedLoc.longitude != null) session.longitude = resolvedLoc.longitude;
+      }
+    } else if (deviceLoc) {
+      // Remember detected device area as candidate, but NOT confirmed until citizen says so!
+      session.area = deviceLoc.area;
+      if (!session.location) session.location = deviceLoc.location;
+      if (deviceLoc.latitude != null) session.latitude = deviceLoc.latitude;
+      if (deviceLoc.longitude != null) session.longitude = deviceLoc.longitude;
+    }
+
+    // If location is NOT yet confirmed by citizen, ask them for the area/location!
+    if (!session.locationConfirmed && deviceLoc) {
+      const detectedArea = deviceLoc.area || deviceLoc.location || 'Pune';
+      const locQ = capability === 'Movement'
+        ? `At what area or location would you like to bring this initiative into action? (I noticed your location is ${detectedArea} — would you like to conduct it in ${detectedArea}, or somewhere else like FC Road, Kothrud, or Shivajinagar?)`
+        : `At what area or location did this happen? (I noticed your location is ${detectedArea} — did this happen in ${detectedArea}, or at another street/landmark?)`;
+
+      const questionText = (fillResult.next_question && (fillResult.next_question.toLowerCase().includes('location') || fillResult.next_question.toLowerCase().includes('area') || fillResult.next_question.toLowerCase().includes('where')))
+        ? fillResult.next_question
+        : locQ;
+
+      session.conversationHistory.push({ role: 'agent', content: questionText });
+      return { type: 'question', text: questionText, capability, form_id: formSchema.form_id };
     }
 
     if (fillResult.ready_for_confirmation) {
@@ -815,6 +1017,7 @@ async function continueFormFilling(sessionId, userMessage, user, priorIntentHist
       }
     }
 
+    const deviceLoc = parseDeviceLocation(userMessage);
     const fillResult = await extractFormValues(session, userMessage, attachedFile);
 
     // Merge extracted values
@@ -825,11 +1028,36 @@ async function continueFormFilling(sessionId, userMessage, user, priorIntentHist
       }
     }
 
+    // Check if citizen explicitly specified or confirmed location
+    const isExplicitLocation = hasExplicitLocationInText(userMessage) || Boolean(fillResult.location_confirmed);
+
+    if (isExplicitLocation) {
+      session.locationConfirmed = true;
+      const resolvedLoc = resolveLocationAndCoords(fillResult.location, fillResult.area, deviceLoc);
+      if (resolvedLoc.location) {
+        session.location = resolvedLoc.location;
+        session.area = resolvedLoc.area;
+        if (resolvedLoc.latitude != null) session.latitude = resolvedLoc.latitude;
+        if (resolvedLoc.longitude != null) session.longitude = resolvedLoc.longitude;
+      }
+    }
+
     // Double-check all required fields are actually filled in draft
     const stillMissing = session.requiredParams.filter(p => !session.draft[p.parameter_id]);
     const actuallyReady = stillMissing.length === 0;
 
-    if (actuallyReady || fillResult.ready_for_confirmation) {
+    // If form fields are ready but citizen has not confirmed location, ask for location!
+    if (actuallyReady && !session.locationConfirmed && deviceLoc) {
+      const detectedArea = deviceLoc.area || deviceLoc.location || 'Pune';
+      const locQ = session.capability === 'Movement'
+        ? `At what area or location would you like to bring this initiative into action? (I noticed your location is ${detectedArea} — would you like to conduct it in ${detectedArea}, or somewhere else like FC Road, Kothrud, or Shivajinagar?)`
+        : `At what area or location did this happen? (I noticed your location is ${detectedArea} — did this happen in ${detectedArea}, or at another street/landmark?)`;
+
+      session.conversationHistory.push({ role: 'agent', content: locQ });
+      return { type: 'question', text: locQ };
+    }
+
+    if ((actuallyReady && session.locationConfirmed) || fillResult.ready_for_confirmation) {
       session.phase = 'confirming';
       const summary = buildConfirmationSummary(session);
       const confirmText = buildConfirmText(session, summary);
@@ -910,6 +1138,11 @@ async function continueFormFilling(sessionId, userMessage, user, priorIntentHist
   session.fileParams = [];
   session.pendingFiles = [];
   session.draft = {};
+  session.location = null;
+  session.area = null;
+  session.latitude = null;
+  session.longitude = null;
+  session.locationConfirmed = false;
 
   const freshReply = 'Is there anything else I can help you with? I can help you report a problem, start an initiative, or check your request status.';
   session.conversationHistory.push({ role: 'agent', content: freshReply });

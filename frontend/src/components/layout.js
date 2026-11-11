@@ -22,12 +22,11 @@ export function renderLayout(contentHTML, pageTitle = '', metaTypes = []) {
   if (role === 'citizen') {
     primaryNav = [
       { path: '/dashboard', label: 'Home', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
-      { path: '/nearby', label: 'Nearby Activities & Map', icon: 'M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z' },
-      { path: '/agent/chat?message=I+want+to+report+a+problem', label: 'Report a Problem', icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z' },
-      { path: '/agent/chat?message=I+want+to+start+an+initiative', label: 'Start an Initiative', icon: 'M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z' },
-      { path: '/agent/chat?message=I+want+to+contribute+or+volunteer', label: 'Contribute / Volunteer', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
-      { path: '/agent/chat?message=I+want+to+understand+a+civic+issue', label: 'Understand an Issue', icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253' },
-      { path: '/entities', label: 'My Civic Activity', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01' },
+      { path: '/nearby', label: 'Explore', icon: 'M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z' },
+      { path: '/entities?type=initiative', label: 'Initiatives', icon: 'M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z' },
+      { path: '/buzz', label: 'Civic Buzz', icon: 'M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z' },
+      { path: '/entities', label: 'My Activity', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01' },
+      { path: '/agent/chat?message=I+want+to+understand+a+civic+issue', label: 'Help & Learn', icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253' },
     ];
   } else if (role === 'coordinator_area' || role === 'coordinator_general') {
     primaryNav = [
@@ -59,14 +58,23 @@ export function renderLayout(contentHTML, pageTitle = '', metaTypes = []) {
     secondaryGroupTitle = 'CAPABILITY METADATA';
   }
 
-  const renderNavGroup = (items) => items.map(link => `
+  const renderNavGroup = (items) => items.map(link => {
+    let isActive = false;
+    if (link.path.includes('?')) {
+      const [p, q] = link.path.split('?');
+      isActive = currentPath === p && currentSearch === ('?' + q);
+    } else {
+      isActive = currentPath === link.path && !currentSearch;
+    }
+    return `
     <li class="sidebar-nav-item">
-      <a href="${link.path}" class="sidebar-nav-link ${currentPath === link.path && !currentSearch ? 'active' : ''}">
+      <a href="${link.path}" class="sidebar-nav-link ${isActive ? 'active' : ''}">
         <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${link.icon}"></path></svg>
         ${escapeHtml(link.label)}
       </a>
     </li>
-  `).join('');
+  `;
+  }).join('');
 
   // Dynamic Civic Capabilities list from EntityType metadata (hidden for citizens to keep UX clean and action-oriented)
   let capabilityNavHTML = '';
@@ -77,7 +85,7 @@ export function renderLayout(contentHTML, pageTitle = '', metaTypes = []) {
       const isActive = currentSearch.includes(`entity_type_id=${t.entity_type_id}`);
       return `
         <li class="sidebar-nav-item">
-          <a href="${href}" class="sidebar-nav-link ${isActive ? 'active' : ''}" style="font-size:13px; padding:6px 12px; display:flex; align-items:center;">
+          <a href="${href}" class="sidebar-nav-link ${isActive ? 'active' : ''}" style="font-size:14.5px; padding:7px 12px; display:flex; align-items:center;">
             <span class="sidebar-cap-icon" style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; margin-right:8px; flex-shrink:0; opacity:0.85;">
               ${capabilityIcon(pres.iconKey, 16)}
             </span>
@@ -100,6 +108,15 @@ export function renderLayout(contentHTML, pageTitle = '', metaTypes = []) {
         <a href="/dashboard" class="sidebar-brand">
           <img src="/logo.png" alt="CivicKalki" class="sidebar-brand-img" />
         </a>
+
+        ${role === 'citizen' ? `
+          <div class="sidebar-new-request-wrap" style="padding: 10px 14px 4px 14px;">
+            <button type="button" class="btn btn-primary ck-sidebar-new-btn" id="sidebar-new-request-btn" style="width:100%; justify-content:center; gap:8px; font-weight:700; font-size:0.95rem; border-radius:10px; background:#ff5a36; border-color:#ff5a36; box-shadow:0 2px 8px rgba(255,90,54,0.3); height:40px;">
+              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
+              <span>+ New request</span>
+            </button>
+          </div>
+        ` : ''}
         
         <div class="sidebar-section">
           <div class="sidebar-group-title">NAVIGATION</div>
@@ -135,7 +152,7 @@ export function renderLayout(contentHTML, pageTitle = '', metaTypes = []) {
             <button id="mobile-menu-btn" class="btn btn-ghost" style="padding:6px; display:none;" aria-label="Toggle sidebar menu">
               <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
             </button>
-            <div style="display:flex; align-items:center; gap:var(--space-2); font-size:0.875rem;">
+            <div style="display:flex; align-items:center; gap:var(--space-2); font-size:0.95rem;">
               <a href="/dashboard" style="color:var(--text-muted); text-decoration:none;">Civic OS</a>
               <span style="color:var(--gray-300);">/</span>
               <span style="font-weight:600; color:var(--text-primary);">${escapeHtml(pageTitle)}</span>
@@ -151,8 +168,8 @@ export function renderLayout(contentHTML, pageTitle = '', metaTypes = []) {
               <button class="user-trigger-btn" id="topbar-user-btn" type="button" aria-haspopup="true" aria-expanded="false">
                 <div class="user-avatar" style="width:32px; height:32px; font-size:13px; font-weight:700;">${escapeHtml(user.name.charAt(0).toUpperCase())}</div>
                 <div style="display:flex; flex-direction:column; align-items:flex-start; line-height:1.2;">
-                  <span style="font-size:0.8125rem; font-weight:600; color:var(--text-primary);">${escapeHtml(user.name.split(' ')[0])}</span>
-                  <span style="font-size:0.6875rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.03em;">${escapeHtml(roleLabel(role))}</span>
+                  <span style="font-size:0.88rem; font-weight:600; color:var(--text-primary);">${escapeHtml(user.name.split(' ')[0])}</span>
+                  <span style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.03em;">${escapeHtml(roleLabel(role))}</span>
                 </div>
                 <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color:var(--text-muted); flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
               </button>
@@ -193,6 +210,26 @@ export function attachLayoutEvents() {
 
   // Attach language selector listeners
   attachLanguageSelectorEvents('topbar');
+
+  const newReqBtn = document.getElementById('sidebar-new-request-btn');
+  if (newReqBtn) {
+    newReqBtn.addEventListener('click', () => {
+      if (window.location.pathname === '/dashboard') {
+        const input = document.getElementById('ck-dark-input');
+        const cockpit = document.getElementById('ck-dark-cockpit');
+        if (cockpit) cockpit.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (input) input.focus();
+      } else {
+        navigate('/dashboard');
+        setTimeout(() => {
+          const input = document.getElementById('ck-dark-input');
+          const cockpit = document.getElementById('ck-dark-cockpit');
+          if (cockpit) cockpit.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          if (input) input.focus();
+        }, 150);
+      }
+    });
+  }
 
   const topbarUserBtn = document.getElementById('topbar-user-btn');
   const userDropdownMenu = document.getElementById('user-dropdown-menu');

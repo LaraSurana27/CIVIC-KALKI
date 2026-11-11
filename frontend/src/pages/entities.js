@@ -37,11 +37,32 @@ export async function renderEntities(params = {}, searchParams = null) {
   const role = getRole();
   const isCitizen = role === 'citizen';
 
-  // Citizens can strictly only view entities initiated by themselves
-  if (isCitizen && user?.user_id) {
-    currentParams.owner_user_id = user.user_id;
+  const isInitiativeQuery = urlParams.get('type') === 'initiative';
+  const activeTab = urlParams.get('tab') || (urlParams.get('following') ? 'following' : (urlParams.get('status') === 'draft' ? 'drafts' : (urlParams.get('status') === 'approved' ? 'contributions' : 'requests')));
+
+  if (isCitizen) {
+    if (isInitiativeQuery) {
+      delete currentParams.owner_user_id;
+    } else if (activeTab === 'following') {
+      currentParams.following = 1;
+      delete currentParams.owner_user_id;
+    } else if (activeTab === 'contributions') {
+      currentParams.owner_user_id = user.user_id;
+      currentParams.status = 'approved';
+      delete currentParams.following;
+    } else if (activeTab === 'drafts') {
+      currentParams.owner_user_id = user.user_id;
+      currentParams.status = 'draft';
+      delete currentParams.following;
+    } else {
+      // requests
+      currentParams.owner_user_id = user.user_id;
+      delete currentParams.following;
+      if (!urlParams.has('status')) delete currentParams.status;
+    }
   } else {
     delete currentParams.owner_user_id;
+    delete currentParams.following;
   }
 
   // Load EntityTypes list dynamically
@@ -58,11 +79,19 @@ export async function renderEntities(params = {}, searchParams = null) {
   let pageTitleText = 'All Cases & Requests';
   let pageSubtitleText = 'Browse, search, and track all civic cases and requests across your workspace.';
 
-  if (isCitizen) {
+  if (isInitiativeQuery) {
+    pageTitleText = 'Civic Initiatives';
+    pageSubtitleText = 'Browse, join, or start community civic initiatives and neighborhood drives.';
+    // Automatically match Movement / Initiative type if not explicitly set
+    if (!currentParams.entity_type_id && entityTypes.length > 0) {
+      const initType = entityTypes.find(t => (t.name || '').toLowerCase().includes('movement') || t.entity_type_id === 1);
+      if (initType) currentParams.entity_type_id = initType.entity_type_id;
+    }
+  } else if (isCitizen) {
     pageTitleText = selectedType ? `My ${capability.title} Requests` : 'My Civic Activity';
     pageSubtitleText = selectedType
       ? `Tracking cases initiated by you for capability "${capability.title}".`
-      : 'Track, review, and manage civic cases and initiatives initiated by you.';
+      : 'Track, review, and manage your civic requests, contributions, and community actions.';
   } else if (selectedType) {
     pageTitleText = `${capability.title} Cases`;
     pageSubtitleText = `Browsing cases for capability "${capability.title}".`;
@@ -76,12 +105,22 @@ export async function renderEntities(params = {}, searchParams = null) {
         <p id="entities-header-subtitle">${escapeHtml(pageSubtitleText)}</p>
       </div>
       <div class="page-header-actions">
-        <a href="/entities/new${currentParams.entity_type_id ? `?entity_type_id=${currentParams.entity_type_id}` : ''}" class="btn btn-primary" style="display:inline-flex; align-items:center; gap:6px;">
-          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-          Start Civic Action
+        <a href="/entities/new${currentParams.entity_type_id ? `?entity_type_id=${currentParams.entity_type_id}` : ''}" class="btn btn-primary" style="display:inline-flex; align-items:center; gap:6px; background:#ff5a36; border-color:#ff5a36;">
+          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          ${isInitiativeQuery ? 'Start New Initiative' : 'Start Civic Action'}
         </a>
       </div>
     </div>
+
+    ${isCitizen && !isInitiativeQuery ? `
+      <!-- My Activity Tabs: Requests, Following, Contributions, Drafts -->
+      <div class="ck-activity-tabs-wrap" style="display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;">
+        <a href="/entities?tab=requests" class="btn ${activeTab === 'requests' ? 'btn-primary' : 'btn-secondary'} btn-sm" style="border-radius:20px; font-weight:700; padding:6px 16px; ${activeTab === 'requests' ? 'background:#ff5a36; border-color:#ff5a36;' : ''}">Requests</a>
+        <a href="/entities?tab=following" class="btn ${activeTab === 'following' ? 'btn-primary' : 'btn-secondary'} btn-sm" style="border-radius:20px; font-weight:700; padding:6px 16px; ${activeTab === 'following' ? 'background:#ff5a36; border-color:#ff5a36;' : ''}">Following</a>
+        <a href="/entities?tab=contributions" class="btn ${activeTab === 'contributions' ? 'btn-primary' : 'btn-secondary'} btn-sm" style="border-radius:20px; font-weight:700; padding:6px 16px; ${activeTab === 'contributions' ? 'background:#ff5a36; border-color:#ff5a36;' : ''}">Contributions</a>
+        <a href="/entities?tab=drafts" class="btn ${activeTab === 'drafts' ? 'btn-primary' : 'btn-secondary'} btn-sm" style="border-radius:20px; font-weight:700; padding:6px 16px; ${activeTab === 'drafts' ? 'background:#ff5a36; border-color:#ff5a36;' : ''}">Drafts</a>
+      </div>
+    ` : ''}
     
     <div class="card mb-6" style="padding: 16px 20px;">
       <div class="filters-bar" style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; width:100%;">
