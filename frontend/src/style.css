@@ -3967,3 +3967,695 @@ html, body {
     display: none;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   9. KALKI AGENTIC AI TAB & MOTION TICKER SUITE
+   ══════════════════════════════════════════════════════════════ */
+
+/* Tab navigation bar */
+.ck-dash-tabs-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+  padding-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.ck-dash-tabs-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f1f5f9;
+  padding: 5px;
+  border-radius: 14px;
+  border: 1px solid rgba(203, 213, 225, 0.6);
+}
+
+.ck-dash-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  color: #475569;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.ck-dash-tab:hover {
+  color: #0f172a;
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.ck-dash-tab.active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.ck-dash-tab[data-tab="ai"].active {
+  background: #0f172a;
+  color: #f8fafc;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.25);
+}
+
+.ck-tab-icon {
+  display: flex;
+  align-items: center;
+  color: inherit;
+}
+
+.ck-dash-tab[data-tab="ai"].active .ck-tab-icon {
+  color: #fb923c;
+}
+
+.ck-tab-pill-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(249, 115, 22, 0.18);
+  color: #fb923c;
+  border: 1px solid rgba(249, 115, 22, 0.3);
+}
+
+.ck-dash-tab:not(.active) .ck-tab-pill-live {
+  background: #ffedd5;
+  color: #c2410c;
+  border-color: rgba(194, 65, 12, 0.2);
+}
+
+.ck-tab-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.ck-dash-tabs-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ck-node-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.ck-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  animation: ck-pulse-glow 2s infinite cubic-bezier(0.66, 0, 0, 1);
+}
+
+@keyframes ck-pulse-glow {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+/* ── Live Motion Ticker ── */
+.ck-motion-ticker-wrap {
+  width: 100%;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 12px;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ck-motion-ticker-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #f97316;
+  background: rgba(249, 115, 22, 0.15);
+  border: 1px solid rgba(249, 115, 22, 0.25);
+  padding: 3px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ck-motion-ticker-viewport {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  mask-image: linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%);
+}
+
+.ck-motion-ticker-track {
+  display: inline-flex;
+  align-items: center;
+  gap: 36px;
+  white-space: nowrap;
+  animation: ck-marquee 38s linear infinite;
+}
+
+.ck-motion-ticker-wrap:hover .ck-motion-ticker-track {
+  animation-play-state: paused;
+}
+
+.ck-motion-ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.76rem;
+  color: #cbd5e1;
+}
+
+.ck-motion-ticker-item strong {
+  color: #f8fafc;
+  font-weight: 600;
+}
+
+.ck-motion-ticker-sep {
+  color: #f97316;
+  opacity: 0.7;
+}
+
+@keyframes ck-marquee {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-50%); }
+}
+
+/* ── Highlight Hero Section in Tab 1 ── */
+.ck-ai-hero-card {
+  position: relative;
+  background: radial-gradient(circle at 85% 15%, rgba(249, 115, 22, 0.16) 0%, transparent 60%),
+              radial-gradient(circle at 10% 80%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
+              #0f172a;
+  border-radius: 20px;
+  padding: 26px 30px;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: 0 16px 40px -12px rgba(15, 23, 42, 0.35);
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+
+.ck-ai-hero-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.ck-ai-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ck-ai-badge-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(249, 115, 22, 0.2);
+  border: 1px solid rgba(249, 115, 22, 0.4);
+  color: #fdba74;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ck-ai-badge-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.ck-ai-hero-title {
+  font-size: 1.85rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #f8fafc;
+  line-height: 1.2;
+  margin: 0 0 6px 0;
+}
+
+.ck-ai-hero-title span {
+  background: linear-gradient(135deg, #ffedd5 0%, #fb923c 50%, #f97316 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Dynamic Rotating Prompt (Motion Text!) */
+.ck-ai-prompt-rotator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.ck-ai-rotator-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.ck-ai-rotator-text-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  color: #fed7aa;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ck-ai-rotator-text-box:hover {
+  background: rgba(249, 115, 22, 0.22);
+  border-color: rgba(249, 115, 22, 0.5);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.ck-ai-rotator-action {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #f97316;
+  text-transform: uppercase;
+  margin-left: 4px;
+}
+
+/* ── Two Column AI Console Layout ── */
+.ck-ai-console-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 310px;
+  gap: 24px;
+}
+
+/* Left / Main Chat Box */
+.ck-ai-chat-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 520px;
+}
+
+.ck-ai-chat-header {
+  padding: 14px 20px;
+  background: #fafafc;
+  border-bottom: 1px solid #edf2f7;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ck-ai-chat-agent-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ck-ai-chat-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #ea580c, #c2410c);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(234, 88, 12, 0.3);
+}
+
+.ck-ai-chat-agent-name {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.ck-ai-chat-agent-sub {
+  font-size: 0.72rem;
+  color: #64748b;
+}
+
+.ck-ai-chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ck-ai-header-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #64748b;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ck-ai-header-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+/* Chat message list */
+.ck-ai-messages-wrap {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 480px;
+  background: #fdfdfd;
+}
+
+/* Quick Action Chips inside chat header/start */
+.ck-ai-chips-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ck-ai-rapid-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #fed7aa;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ck-ai-rapid-chip:hover {
+  background: #ffedd5;
+  border-color: #f97316;
+  color: #7c2d12;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(249, 115, 22, 0.15);
+}
+
+/* Chat Input Bar inside card */
+.ck-ai-input-zone {
+  padding: 14px 18px;
+  background: #ffffff;
+  border-top: 1px solid #edf2f7;
+}
+
+.ck-ai-file-preview-bar {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.ck-ai-preview-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+}
+
+.ck-ai-preview-thumb {
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.ck-ai-preview-remove {
+  background: none;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  color: #ef4444;
+  line-height: 1;
+}
+
+.ck-ai-input-bar-inner {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: #f8fafc;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 14px;
+  padding: 6px 10px;
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+}
+
+.ck-ai-input-bar-inner:focus-within {
+  border-color: #f97316;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
+}
+
+.ck-ai-textarea {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  resize: none;
+  padding: 6px 4px;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: #0f172a;
+  font-family: inherit;
+  min-height: 38px;
+  max-height: 120px;
+}
+
+.ck-ai-textarea::placeholder {
+  color: #94a3b8;
+}
+
+.ck-ai-input-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-bottom: 2px;
+}
+
+.ck-ai-action-icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ck-ai-action-icon-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.ck-ai-action-icon-btn.active {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.ck-ai-send-btn {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 9px;
+  border: none;
+  background: linear-gradient(135deg, #ea580c, #c2410c);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.82rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ck-ai-send-btn:hover {
+  opacity: 0.94;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(234, 88, 12, 0.3);
+}
+
+/* Audio wave animation */
+.ck-ai-waveform {
+  display: none;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+  padding: 0 4px;
+}
+
+.ck-ai-wave-bar {
+  width: 3px;
+  height: 8px;
+  background: #ef4444;
+  border-radius: 2px;
+  animation: ck-wave-jump 0.8s infinite ease-in-out alternate;
+}
+
+.ck-ai-wave-bar:nth-child(2) { animation-delay: 0.15s; }
+.ck-ai-wave-bar:nth-child(3) { animation-delay: 0.3s; }
+.ck-ai-wave-bar:nth-child(4) { animation-delay: 0.45s; }
+
+@keyframes ck-wave-jump {
+  0% { height: 4px; }
+  100% { height: 18px; }
+}
+
+/* ── Telemetry Sidebar (Right Column) ── */
+.ck-ai-telemetry-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ck-telemetry-panel {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 16px 18px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+}
+
+.ck-telemetry-header {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ck-telemetry-stat-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ck-telemetry-stat-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.ck-telemetry-stat-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.ck-telemetry-label {
+  color: #64748b;
+}
+
+.ck-telemetry-val {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.ck-telemetry-val.accent-green {
+  color: #059669;
+}
+
+.ck-telemetry-val.accent-amber {
+  color: #d97706;
+}
+
+/* Responsive adjustments */
+@media (max-width: 980px) {
+  .ck-ai-console-grid {
+    grid-template-columns: 1fr;
+  }
+}
+

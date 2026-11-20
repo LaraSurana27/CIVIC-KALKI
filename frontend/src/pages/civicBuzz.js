@@ -49,7 +49,7 @@ export async function renderCivicBuzz() {
         <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px;">
           <div>
             <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
-              <span style="font-size: 28px;">🔥</span>
+              <span style="display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; border-radius:10px; background:rgba(249,115,22,0.15); color:#f97316;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></span>
               <h1 style="font-size: 26px; font-weight: 800; color: #fff; margin: 0; letter-spacing: -0.5px;">
                 Civic Buzz &amp; Meme Studio
               </h1>
@@ -60,7 +60,7 @@ export async function renderCivicBuzz() {
           </div>
           <div style="display: flex; gap: 10px; flex-wrap: wrap;">
             <button id="buzz-create-btn" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 8px; font-weight: 700;">
-              <span>⚡</span> Create a Meme
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Create a Meme
             </button>
             <a href="/entities" class="btn btn-secondary" style="font-size: 13px;">Browse Issues</a>
           </div>
@@ -71,14 +71,14 @@ export async function renderCivicBuzz() {
           <button id="tab-feed" class="buzz-tab ${activeTab === 'feed' ? 'buzz-tab-active' : ''}" style="
             background: ${activeTab === 'feed' ? 'var(--primary, #3b82f6)' : 'transparent'};
             color: ${activeTab === 'feed' ? '#fff' : '#94a3b8'};
-            border: none; padding: 8px 18px; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer;">
-            🌐 Community Feed
+            border: none; padding: 8px 18px; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> Community Feed
           </button>
           <button id="tab-my" class="buzz-tab ${activeTab === 'my' ? 'buzz-tab-active' : ''}" style="
             background: ${activeTab === 'my' ? 'var(--primary, #3b82f6)' : 'transparent'};
             color: ${activeTab === 'my' ? '#fff' : '#94a3b8'};
-            border: none; padding: 8px 18px; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer;">
-            👤 My Memes &amp; Drafts
+            border: none; padding: 8px 18px; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> My Memes &amp; Drafts
           </button>
         </div>
       </div>
@@ -97,7 +97,9 @@ export async function renderCivicBuzz() {
                 align-items: center; justify-content: center; padding: 16px;">
       <div style="background: #1e293b; border: 1px solid rgba(255,255,255,0.15); border-radius: 16px;
                   max-width: 480px; width: 100%; padding: 24px; color: #fff;">
-        <h3 style="font-size: 18px; font-weight: 700; margin-top: 0; margin-bottom: 10px;">🚩 Report Meme</h3>
+        <h3 style="font-size: 18px; font-weight: 700; margin-top: 0; margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg> Report Meme
+        </h3>
         <p style="font-size: 13px; color: #94a3b8; margin-bottom: 16px;">
           Reporting will immediately place this campaign <strong>Under Review</strong> and remove it from the public feed pending moderator investigation.
         </p>
@@ -226,7 +228,9 @@ function renderFeedView(container, campaigns) {
     container.innerHTML = `
       <div style="text-align: center; padding: 80px 24px; background: rgba(30, 41, 59, 0.5);
                   border: 1px dashed rgba(255, 255, 255, 0.15); border-radius: 16px;">
-        <span style="font-size: 48px; display: block; margin-bottom: 16px;">🌱</span>
+        <span style="display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 16px; background: rgba(16,185,129,0.12); color: #10b981; margin: 0 auto 16px;">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.9C15.5 4.9 17 3.5 19 2c1 2 2 4.5 1 8.5-2 2-5.5 3.5-9 3.5"/><path d="M2 21c0-3 1.85-5.36 5.08-6"/></svg>
+        </span>
         <h3 style="color: #fff; font-size: 20px; font-weight: 700; margin-bottom: 8px;">No Active Civic Campaigns Yet</h3>
         <p style="color: #94a3b8; font-size: 14px; max-width: 480px; margin: 0 auto 24px;">
           Be the first to turn a real, approved civic problem into relatable awareness content that drives action.
@@ -286,7 +290,7 @@ function renderFeedView(container, campaigns) {
           <!-- Real Impact Stats Card -->
           <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 10px; padding: 10px 12px; margin-bottom: 14px;">
             <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #94a3b8; font-weight: 600; margin-bottom: 6px;">
-              <span>📈 REAL IMPACT (RECORDED ONLY)</span>
+              <span style="display: inline-flex; align-items: center; gap: 5px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg> REAL IMPACT (RECORDED ONLY)</span>
               ${!hasActivity ? '<span style="color: #64748b; font-style: italic;">No activity yet</span>' : ''}
             </div>
             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; text-align: center;">
@@ -312,21 +316,21 @@ function renderFeedView(container, campaigns) {
           <!-- Actions Bar -->
           <div style="display: flex; gap: 8px; flex-wrap: wrap;">
             <button class="btn btn-primary buzz-view-issue-btn" data-campaign="${c.campaign_id}" data-issue="${c.linked_entity_id}"
-                    style="flex: 1; font-size: 12px; padding: 8px 12px; font-weight: 600; min-width: 100px;">
-              🔍 View Issue
+                    style="flex: 1; font-size: 12px; padding: 8px 12px; font-weight: 600; min-width: 100px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> View Issue
             </button>
             <button class="btn btn-secondary buzz-share-btn" data-campaign="${c.campaign_id}" data-issue="${c.linked_entity_id}"
-                    style="font-size: 12px; padding: 8px 12px;">
-              🔗 Share
+                    style="font-size: 12px; padding: 8px 12px; display: inline-flex; align-items: center; gap: 6px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> Share
             </button>
             <button class="btn btn-secondary buzz-export-btn" data-container="meme-container-${c.campaign_id}" data-id="${c.campaign_id}"
-                    style="font-size: 12px; padding: 8px 10px;" title="Export PNG image">
-              📥
+                    style="font-size: 12px; padding: 8px 10px; display: inline-flex; align-items: center;" title="Export PNG image">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             </button>
             <button class="btn buzz-report-btn" data-campaign="${c.campaign_id}"
-                    style="background: transparent; border: 1px solid rgba(239, 68, 68, 0.4); color: #ef4444; font-size: 11px; padding: 8px 10px; border-radius: 6px;"
+                    style="background: transparent; border: 1px solid rgba(239, 68, 68, 0.4); color: #ef4444; font-size: 11px; padding: 8px 10px; border-radius: 6px; display: inline-flex; align-items: center;"
                     title="Report content">
-              🚩
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
             </button>
           </div>
         </div>
@@ -381,14 +385,14 @@ function attachFeedActionEvents() {
       const id = btn.getAttribute('data-id');
       try {
         btn.disabled = true;
-        btn.textContent = '⏳';
+        btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-linecap="round"/></svg>`;
         await exportMemeImage(containerId, `civic-meme-${id}.png`);
         toastSuccess('Meme downloaded successfully!');
       } catch (err) {
         toastError(err.message || 'Export failed');
       } finally {
         btn.disabled = false;
-        btn.textContent = '📥';
+        btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
       }
     });
   });
@@ -407,7 +411,9 @@ function renderMyMemesView(container, campaigns) {
     container.innerHTML = `
       <div style="text-align: center; padding: 60px 24px; background: rgba(30, 41, 59, 0.4);
                   border: 1px dashed rgba(255, 255, 255, 0.15); border-radius: 16px;">
-        <span style="font-size: 40px; display: block; margin-bottom: 12px;">🎨</span>
+        <span style="display: inline-flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 14px; background: rgba(59,130,246,0.12); color: #3b82f6; margin: 0 auto 12px;">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
+        </span>
         <h3 style="color: #fff; font-size: 18px; font-weight: 700; margin-bottom: 8px;">No Memes Created Yet</h3>
         <p style="color: #94a3b8; font-size: 14px; margin-bottom: 20px;">
           You haven't created any civic meme campaigns yet. Go to an approved issue to get started!

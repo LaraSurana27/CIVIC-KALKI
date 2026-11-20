@@ -179,13 +179,13 @@ function renderStep1() {
             <div class="form-group" style="flex:1;">
               <label class="form-label">Icon Identifier</label>
               <select id="module-icon" class="form-control">
-                <option value="📋" ${state.basics.icon === '📋' ? 'selected' : ''}>📋 Form / Registration</option>
-                <option value="📢" ${state.basics.icon === '📢' ? 'selected' : ''}>📢 Notice / Alert</option>
-                <option value="🛡️" ${state.basics.icon === '🛡️' ? 'selected' : ''}>🛡️ Governance / Policy</option>
-                <option value="💼" ${state.basics.icon === '💼' ? 'selected' : ''}>💼 Employment / Exchange</option>
-                <option value="🤝" ${state.basics.icon === '🤝' ? 'selected' : ''}>🤝 Volunteer / Community</option>
-                <option value="🌳" ${state.basics.icon === '🌳' ? 'selected' : ''}>🌳 Parks / Environment</option>
-                <option value="🏗️" ${state.basics.icon === '🏗️' ? 'selected' : ''}>🏗️ Infrastructure</option>
+                <option value="📋" ${state.basics.icon === '📋' ? 'selected' : ''}>Form / Registration</option>
+                <option value="📢" ${state.basics.icon === '📢' ? 'selected' : ''}>Notice / Alert</option>
+                <option value="🛡️" ${state.basics.icon === '🛡️' ? 'selected' : ''}>Governance / Policy</option>
+                <option value="💼" ${state.basics.icon === '💼' ? 'selected' : ''}>Employment / Exchange</option>
+                <option value="🤝" ${state.basics.icon === '🤝' ? 'selected' : ''}>Volunteer / Community</option>
+                <option value="🌳" ${state.basics.icon === '🌳' ? 'selected' : ''}>Parks / Environment</option>
+                <option value="🏗️" ${state.basics.icon === '🏗️' ? 'selected' : ''}>Infrastructure</option>
               </select>
             </div>
           </div>

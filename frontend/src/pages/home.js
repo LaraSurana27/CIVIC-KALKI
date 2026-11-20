@@ -37,6 +37,7 @@ const SVG = {
   botLarge: `<svg class="ck-icon ck-icon-md" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="12" x="3" y="6" rx="2"/><circle cx="9" cy="12" r="1.5" fill="currentColor"/><circle cx="15" cy="12" r="1.5" fill="currentColor"/><path d="M12 2v4"/><path d="M8 2h8"/><path d="M2 13h1"/><path d="M21 13h1"/></svg>`,
   gearLarge: `<svg class="ck-icon ck-icon-md" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>`,
   checkLarge: `<svg class="ck-icon ck-icon-md" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
+  check: `<svg class="ck-icon ck-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
 
   // Civic buzz memes & metrics
   flame: `<svg class="ck-icon ck-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>`,
@@ -300,9 +301,9 @@ export function renderHome() {
                     </div>
                     <div class="ck-mockup-body">
                       <div class="ck-mock-workflow">
-                        <div class="ck-wf-step done"><span>✓</span> Submitted</div>
+                        <div class="ck-wf-step done"><span>${SVG.check}</span> Submitted</div>
                         <div class="ck-wf-line done"></div>
-                        <div class="ck-wf-step done"><span>✓</span> Area Review</div>
+                        <div class="ck-wf-step done"><span>${SVG.check}</span> Area Review</div>
                         <div class="ck-wf-line active"></div>
                         <div class="ck-wf-step active"><span>${SVG.clock}</span> Director Approval</div>
                         <div class="ck-wf-line"></div>
@@ -487,8 +488,8 @@ export function renderHome() {
           <div class="ck-buzz-cta" style="display:flex; flex-direction:column; align-items:center; gap:12px;">
             <p>These aren't just memes. These are real issues waiting to be fixed.</p>
             <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center;">
-              <a href="/buzz" class="ck-btn-hero" style="background:linear-gradient(135deg, #f59e0b, #ef4444); border:none; color:#fff;">
-                🔥 Open Civic Buzz &amp; Meme Studio →
+              <a href="/buzz" class="ck-btn-hero" style="background:linear-gradient(135deg, #f59e0b, #ef4444); border:none; color:#fff; display:inline-flex; align-items:center; gap:8px;">
+                ${SVG.flame} Open Civic Buzz &amp; Meme Studio →
               </a>
               <a href="/signup" class="ck-btn-hero">Report Yours. We'll Actually Fix It. →</a>
             </div>

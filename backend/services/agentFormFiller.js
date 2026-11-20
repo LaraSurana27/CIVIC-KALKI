@@ -24,6 +24,21 @@ const fs = require('fs');
 const prisma = require('../db');
 const { routeIntent } = require('./agentIntentRouter');
 
+// ── Helper: exact Haversine distance in kilometers ───────────────────────────
+function haversineDistanceKm(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Earth radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
@@ -89,6 +104,7 @@ function createSession(sessionId, userId, userRole) {
     conversationHistory: [],
     userId,
     userRole,
+    userLocation: null,
     _timer: null,
   };
   sessions.set(sessionId, session);
@@ -348,6 +364,17 @@ function buildFormFillPrompt(session, userMessage, attachedFile = null) {
     `${t.role === 'user' ? 'Citizen' : 'Agent'}: ${t.content}`
   ).join('\n');
 
+  let locationContext = '';
+  if (session.userLocation) {
+    locationContext = `
+CITIZEN CURRENT LOCATION CONTEXT:
+- Coordinates: ${session.userLocation.latitude != null ? `${session.userLocation.latitude}, ${session.userLocation.longitude}` : 'Not specified'}
+- Area/Ward: ${session.userLocation.area || 'Unknown'}
+- Address/Landmark: ${session.userLocation.address || 'Unknown'}
+NOTE: If the form has parameters for location, area, ward, or address, you may use this location to automatically populate them unless the citizen explicitly specifies a different location.
+`;
+  }
+
   let fileInstructions = '';
   if (attachedFile) {
     fileInstructions = `
@@ -381,7 +408,7 @@ ${conversationText || '(start of conversation)'}
 
 CITIZEN'S LATEST MESSAGE:
 "${userMessage}"
-${fileInstructions}
+${fileInstructions}${locationContext}
 INSTRUCTIONS:
 1. Extract ANY parameter values present in the citizen's message or observable in the attached photo/document. Map them to the correct integer parameter_id.
    For select/dropdown fields, normalize the value to the closest valid choice listed above.
@@ -498,6 +525,16 @@ function buildConfirmationSummary(session) {
   for (const pf of (session.pendingFiles || [])) {
     lines.push({ label: pf.label || 'Attached File', value: `📎 ${pf.originalName}`, mandatory: false, isFile: true });
   }
+  if (session.userLocation && (session.userLocation.latitude != null || session.userLocation.area)) {
+    const locParts = [
+      session.userLocation.address,
+      session.userLocation.area,
+      session.userLocation.latitude != null ? `(${session.userLocation.latitude.toFixed(4)}, ${session.userLocation.longitude.toFixed(4)})` : null
+    ].filter(Boolean);
+    if (locParts.length > 0) {
+      lines.push({ label: 'Location & Coordinates', value: `📍 ${locParts.join(' • ')}`, mandatory: false, isFile: false, isLocation: true });
+    }
+  }
   return lines;
 }
 
@@ -524,14 +561,22 @@ async function submitDraft(session, sessionId) {
   const location = paramByKey['location'] || paramByKey['area'] || null;
   const area = paramByKey['area'] || paramByKey['category'] || null;
 
-  // 1. Create the entity (draft status, same as manual form)
+  // Resolve coordinates and area from draft or userLocation
+  const finalLocation = location ? String(location).trim() : (session.userLocation?.address || null);
+  const finalArea = area ? String(area).trim() : (session.userLocation?.area || null);
+  const finalLat = session.userLocation?.latitude != null ? Number(session.userLocation.latitude) : null;
+  const finalLng = session.userLocation?.longitude != null ? Number(session.userLocation.longitude) : null;
+
+  // 1. Create the entity (draft status, same as manual form) with persisted coordinates
   const entity = await prisma.entity.create({
     data: {
       entity_type_id: session.entityTypeId,
       owner_user_id: session.userId,
       name: name.trim(),
-      location: location ? String(location).trim() : null,
-      area: area ? String(area).trim() : null,
+      location: finalLocation,
+      area: finalArea,
+      latitude: finalLat,
+      longitude: finalLng,
       status: 'draft',
     },
     include: {
@@ -655,8 +700,14 @@ Could you rephrase, or choose one of the above?`;
  * @param {Object}  [attachedFile]       - { diskPath, storedName, originalName, mimeType, size }
  * @returns {Promise<{type:string, text:string, summary?:Array, entity_id?:number, ready?:boolean}>}
  */
-async function continueFormFilling(sessionId, userMessage, user, priorIntentHistory = [], attachedFile = null) {
+async function continueFormFilling(sessionId, userMessage, user, priorIntentHistory = [], attachedFile = null, userLocation = null) {
   const session = getSession(sessionId, user.user_id, user.role);
+  if (userLocation) {
+    session.userLocation = {
+      ...(session.userLocation || {}),
+      ...userLocation,
+    };
+  }
 
   // Record user's turn in conversation history
   const historyContent = attachedFile
@@ -666,9 +717,63 @@ async function continueFormFilling(sessionId, userMessage, user, priorIntentHist
 
   // ── Phase: INTENT ────────────────────────────────────────────────────────────
   if (session.phase === 'intent') {
-    const intent = attachedFile
-      ? await routeIntent(userMessage, priorIntentHistory, attachedFile)
+    const intent = (attachedFile || session.userLocation)
+      ? await routeIntent(userMessage, priorIntentHistory, attachedFile, session.userLocation)
       : await routeIntent(userMessage, priorIntentHistory);
+
+    // NEARBY CIVIC DISCOVERY
+    if (intent.action_type === 'nearby_query') {
+      const centerLat = session.userLocation?.latitude != null ? Number(session.userLocation.latitude) : null;
+      const centerLng = session.userLocation?.longitude != null ? Number(session.userLocation.longitude) : null;
+
+      if (centerLat != null && centerLng != null) {
+        const radius = 15;
+        const latDelta = radius / 111.0;
+        const lngDelta = radius / (111.0 * Math.max(0.01, Math.cos((centerLat * Math.PI) / 180)));
+
+        const candidates = await prisma.entity.findMany({
+          where: {
+            entityType: { location_visibility: 'public_when_approved' },
+            status: { equals: 'approved', mode: 'insensitive' },
+            latitude: { not: null, gte: centerLat - latDelta, lte: centerLat + latDelta },
+            longitude: { not: null, gte: centerLng - lngDelta, lte: centerLng + lngDelta },
+          },
+          take: 10,
+          include: { entityType: { select: { name: true } } },
+        });
+
+        const nearbyEvents = [];
+        for (const ent of candidates) {
+          const dist = haversineDistanceKm(centerLat, centerLng, ent.latitude, ent.longitude);
+          if (dist <= radius) {
+            nearbyEvents.push({
+              id: ent.entity_id,
+              name: ent.name,
+              area: ent.area || 'General',
+              type: ent.entityType?.name || 'Movement',
+              distKm: dist.toFixed(1),
+            });
+          }
+        }
+        nearbyEvents.sort((a, b) => Number(a.distKm) - Number(b.distKm));
+
+        let reply = '';
+        if (nearbyEvents.length > 0) {
+          reply = `Here are active civic initiatives and events near your location (${session.userLocation?.area || 'your area'}):\n\n` +
+            nearbyEvents.slice(0, 5).map(e => `• **#${e.id} — ${e.name}** (${e.distKm} km away in ${e.area})`).join('\n') +
+            `\n\nYou can ask me to join an initiative or report a new issue here!`;
+        } else {
+          reply = `No active public civic events found within 15 km of your location (${session.userLocation?.area || 'your area'}).\n\nWould you like to start a new civic initiative or report a problem in this area?`;
+        }
+
+        session.conversationHistory.push({ role: 'agent', content: reply });
+        return { type: 'nearby', text: reply, events: nearbyEvents };
+      } else {
+        const reply = `I can help you find nearby civic rallies, protests, and community initiatives! Please share your GPS location using the **📍 Share Location** button or tell me your area/neighborhood.`;
+        session.conversationHistory.push({ role: 'agent', content: reply });
+        return { type: 'nearby', text: reply, needLocation: true };
+      }
+    }
 
     // STATUS CHECK
     if (intent.action_type === 'status_check') {

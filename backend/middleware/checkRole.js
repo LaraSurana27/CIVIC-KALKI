@@ -54,7 +54,10 @@ function getJwtSecret() {
 async function verifyToken(req, res, next) {
   try {
     const cookies = parseCookies(req.headers.cookie);
-    const token = cookies.ck_session;
+    let token = cookies.ck_session;
+    if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+      token = req.headers.authorization.slice(7).trim();
+    }
 
     if (!token) {
       return next(createHttpError('Authentication is required.', 401));
@@ -102,7 +105,10 @@ async function verifyToken(req, res, next) {
 async function optionalAuth(req, res, next) {
   try {
     const cookies = parseCookies(req.headers.cookie);
-    const token = cookies.ck_session;
+    let token = cookies.ck_session;
+    if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+      token = req.headers.authorization.slice(7).trim();
+    }
 
     if (!token) {
       // Anonymous request

@@ -343,7 +343,13 @@ router.get('/', async (req, res, next) => {
       where.status = String(req.query.status).trim();
     }
 
-    if (req.query.area !== undefined && req.query.area !== '') {
+    // Area Coordinators strictly view entities in their assigned jurisdiction
+    if (req.user && req.user.role === 'coordinator_area') {
+      const assigned = req.user.assignedArea || req.user.assigned_area;
+      if (assigned) {
+        where.area = String(assigned).trim();
+      }
+    } else if (req.query.area !== undefined && req.query.area !== '') {
       where.area = String(req.query.area).trim();
     }
 
@@ -530,6 +536,17 @@ router.get('/:id', async (req, res, next) => {
       );
     }
 
+    // Area coordinator check: cannot view entities belonging to other areas
+    if (req.user && req.user.role === 'coordinator_area') {
+      const userArea = req.user.assignedArea || req.user.assigned_area;
+      const entityArea = entity.area;
+      if (userArea && entityArea && String(userArea).trim().toLowerCase() !== String(entityArea).trim().toLowerCase()) {
+        return next(
+          createError(`You are assigned to area "${userArea}" and cannot access cases in area "${entityArea}".`, 403)
+        );
+      }
+    }
+
     const visibleEntity = applyLocationVisibility(entity, req.user);
     return res.status(200).json({ success: true, data: visibleEntity });
   } catch (err) {
@@ -553,11 +570,13 @@ router.put('/:id', async (req, res, next) => {
       location === undefined &&
       area === undefined &&
       jurisdiction_id === undefined &&
-      status === undefined
+      status === undefined &&
+      req.body.latitude === undefined &&
+      req.body.longitude === undefined
     ) {
       return next(
         createError(
-          'Request body must include at least one field to update: entity_type_id, name, location, area, or jurisdiction_id.',
+          'Request body must include at least one field to update: entity_type_id, name, location, area, jurisdiction_id, latitude, or longitude.',
           400
         )
       );

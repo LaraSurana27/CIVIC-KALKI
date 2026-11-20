@@ -179,9 +179,26 @@ export const agent = {
    *  @param {string} message    - Citizen's free-text message
    *  @param {File|null} attachment - Optional document/photo file
    */
-  chat: async (sessionId, message, attachment = null) => {
+  chat: async (sessionId, message, attachment = null, location = null) => {
     if (!attachment) {
-      return request('POST', '/agent/chat', { sessionId, message });
+      const payload = { sessionId, message };
+      if (location && location.latitude != null && location.longitude != null) {
+        payload.latitude = Number(location.latitude);
+        payload.longitude = Number(location.longitude);
+        if (location.area) payload.area = String(location.area).trim();
+        if (location.address) payload.address = String(location.address).trim();
+      }
+      return request('POST', '/agent/chat', payload);
+    }
+    const formData = new FormData();
+    formData.append('sessionId', sessionId);
+    formData.append('message', message || '');
+    formData.append('attachment', attachment);
+    if (location && location.latitude != null && location.longitude != null) {
+      formData.append('latitude', String(location.latitude));
+      formData.append('longitude', String(location.longitude));
+      if (location.area) formData.append('area', String(location.area).trim());
+      if (location.address) formData.append('address', String(location.address).trim());
     }
     const headers = {
       'X-Requested-With': 'ck-web',
@@ -240,5 +257,10 @@ export const meme = {
 // ── Health ────────────────────────────────────────────────────────────────
 export const health = () => request('GET', '/health');
 
-
-
+// ── Coordinator AI (Ayush's Module) ──────────────────────────────────────
+// POST /coordinator/:id/analyze  — on-demand advisory analysis for coordinator/director/admin
+// GET  /coordinator/legal-corpus — constitutional and legal reference corpus metadata
+export const coordinatorAI = {
+  analyze:     (entityId) => request('POST', `/coordinator/${entityId}/analyze`),
+  legalCorpus: ()         => request('GET', '/coordinator/legal-corpus'),
+};

@@ -1,6 +1,6 @@
 import { requireAuth, getUser } from '../auth.js';
 import { renderLayout, attachLayoutEvents } from '../components/layout.js';
-import { entities as apiEntities, values as apiValues, reports as apiReports } from '../api.js';
+import { entities as apiEntities, values as apiValues, reports as apiReports, coordinatorAI } from '../api.js';
 import { toastError, toastSuccess } from '../components/toast.js';
 import { showModal, closeModal } from '../components/modal.js';
 import { navigate } from '../router.js';
@@ -71,7 +71,7 @@ export async function renderEntityDetail({ id }) {
       if (extraActions) {
         extraActions.innerHTML = `
           <a href="/meme/studio/${entity.entity_id}" class="btn btn-secondary" style="display:inline-flex; align-items:center; gap:6px; font-weight:700; border-color:#f59e0b; color:#d97706; background:#fffbeb;">
-            <span>⚡</span> Create Civic Meme
+            <span style="display:inline-flex; align-items:center; vertical-align:middle; margin-right:4px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> Create Civic Meme
           </a>
         `;
       }
@@ -87,24 +87,62 @@ export async function renderEntityDetail({ id }) {
 function renderContent(container, entity, values, audit, lineage, workflowMeta, moduleReports, user) {
   const capability = getCapabilityPresentation(entity.entityType);
 
-  // Workflow progress step diagram
-  const steps = ['draft', 'submitted', 'coordinator_approved', 'approved'];
-  const currentIndex = steps.indexOf(entity.status) !== -1 ? steps.indexOf(entity.status) : -1;
+  // BUG FIX #4: Derive workflow steps dynamically from WorkflowMaster rules.
+  // Previously hardcoded to ['draft','submitted','coordinator_approved','approved'],
+  // which showed incorrect progress for custom entity type workflows.
+  const STANDARD_STEPS = ['draft', 'submitted', 'coordinator_approved', 'approved'];
+  const TERMINAL_STATES = new Set(['approved', 'rejected', 'deleted', 'closed', 'published', 'reconciled', 'audited']);
+
+  function buildProgressSteps(currentStatus, allowedTransitions) {
+    // If WorkflowMaster returned transitions, reconstruct the path by tracing from draft→...→terminal
+    if (allowedTransitions && allowedTransitions.length > 0) {
+      // Build a unique ordered list by following transition chains from known start states
+      const seenFrom = new Set(allowedTransitions.map(t => t.from));
+      const seenTo = new Set(allowedTransitions.map(t => t.to));
+      // Start states: statuses that appear as 'from' but not as a 'to' from another status
+      const starters = [...seenFrom].filter(s => !seenTo.has(s));
+      const start = starters[0] || 'draft';
+      const chain = [start];
+      let cur = start;
+      for (let i = 0; i < 10; i++) {
+        const next = allowedTransitions.find(t => t.from === cur && !TERMINAL_STATES.has(t.to));
+        if (!next) {
+          // Try to find a terminal state
+          const terminal = allowedTransitions.find(t => t.from === cur && TERMINAL_STATES.has(t.to));
+          if (terminal && !chain.includes(terminal.to)) chain.push(terminal.to);
+          break;
+        }
+        if (!chain.includes(next.to)) chain.push(next.to);
+        cur = next.to;
+      }
+      if (chain.length >= 3) return chain;
+    }
+    // Fallback: standard 4-step flow
+    return STANDARD_STEPS;
+  }
+
+  const steps = buildProgressSteps(entity.status, workflowMeta.allowedTransitions || []);
   const isRejected = entity.status === 'rejected';
-  
+  const currentIndex = steps.indexOf(entity.status);
+
   let workflowHTML = '<div class="workflow-steps mt-4 mb-2">';
   steps.forEach((step, idx) => {
-    const isDone = idx < currentIndex || (idx === currentIndex && !isRejected && entity.status === 'approved');
-    const isCurrent = idx === currentIndex && entity.status !== 'approved';
-    const classStr = isRejected && idx === currentIndex ? 'rejected' : (isDone ? 'done' : (isCurrent ? 'current' : ''));
-    
+    const isDone = currentIndex !== -1
+      ? (idx < currentIndex || (idx === currentIndex && TERMINAL_STATES.has(entity.status) && !isRejected))
+      : false;
+    const isCurrent = idx === currentIndex && !isRejected && !TERMINAL_STATES.has(entity.status);
+    const isCurrentTerminal = idx === currentIndex && TERMINAL_STATES.has(entity.status) && !isRejected;
+    const classStr = isRejected && idx === currentIndex
+      ? 'rejected'
+      : (isDone || isCurrentTerminal ? 'done' : (isCurrent ? 'current' : ''));
+
     workflowHTML += `
       <div class="workflow-step">
         <div class="workflow-step-node">
           <div class="workflow-step-circle ${classStr}">${idx + 1}</div>
           <div class="workflow-step-label mt-1">${formatStepName(step)}</div>
         </div>
-        ${idx < steps.length - 1 ? `<div class="workflow-step-connector ${isDone ? 'done' : ''}"></div>` : ''}
+        ${idx < steps.length - 1 ? `<div class="workflow-step-connector ${isDone || isCurrentTerminal ? 'done' : ''}"></div>` : ''}
       </div>
     `;
   });
@@ -123,33 +161,39 @@ function renderContent(container, entity, values, audit, lineage, workflowMeta, 
 
   const actionsHTML = renderDynamicActions(entity, workflowMeta.allowedTransitions || [], user);
 
-  // AI Decision Intelligence Card for Officer / Director / Admin
+  // Enhanced Coordinator AI Analysis Panel (Ayush's Module)
+  // Uses Groq-powered analysis via POST /coordinator/:id/analyze
   const isStaffOrAdmin = user && ['coordinator_area', 'coordinator_general', 'director', 'admin'].includes(user.role);
   let aiCardHTML = '';
   if (isStaffOrAdmin && entity.status !== 'deleted') {
     aiCardHTML = `
-      <div class="card mb-6" id="ai-report-card" style="border: 1px solid var(--primary-border); background: #f8fafc;">
-        <div class="card-header" style="background: var(--surface); display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border);">
-          <div style="display:flex; align-items:center; gap:8px;">
-            <span style="display:flex; align-items:center; color:var(--primary);">
-              <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+      <div class="card mb-6" id="ai-report-card" style="border: 1px solid var(--primary-border); background: #f0f7ff;">
+        <div class="card-header" style="background: linear-gradient(135deg, #1e3a5f 0%, #2d6a9f 100%); display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.25rem; border-bottom: none; border-radius: 8px 8px 0 0;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="display:flex; align-items:center; color:#7dd3fc;">
+              <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
             </span>
             <div>
-              <h3 class="card-title" style="color: var(--text-primary); margin:0;">Civic Intelligence Analysis</h3>
-              <span style="font-size: 12px; color: var(--text-muted);">AI-Assisted Decision Layer</span>
+              <h3 style="color:#f0f9ff; margin:0; font-size:1rem; font-weight:700;">Coordinator Advisory AI</h3>
+              <span style="font-size: 11px; color:#93c5fd;">Powered by Groq · Advisory Analysis Only · Human Decision Required</span>
             </div>
           </div>
-          <span class="badge badge-primary" style="font-weight:600;">Executive Analysis</span>
+          <span style="background:#1e40af; color:#bfdbfe; font-size:11px; font-weight:700; padding:3px 10px; border-radius:20px; border:1px solid #3b82f6;">Groq AI</span>
         </div>
         <div class="card-body" id="ai-report-body" style="padding: 1.25rem;">
-          <div style="text-align:center; padding: 1rem 0;">
-            <p style="color:var(--text-secondary); margin-bottom:1.25rem; font-size:14px; max-width:600px; margin-left:auto; margin-right:auto;">
-              Run an automated AI analytical breakdown of this case to inspect observations, patterns, recommendations, and evidence.
+          <div style="text-align:center; padding: 1.5rem 0;">
+            <p style="color:var(--text-secondary); margin-bottom:1.25rem; font-size:14px; max-width:600px; margin-left:auto; margin-right:auto; line-height:1.6;">
+              Generate a structured advisory analysis of this case including: case summary, missing information detection, attention factors, stakeholder suggestions, and relevant constitutional/legal references.
             </p>
-            <button id="btn-generate-ai" class="btn btn-primary" style="padding:10px 22px; font-weight:600; box-shadow:var(--shadow-sm); display:inline-flex; align-items:center; gap:8px;">
-              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-              Run Civic Intelligence Analysis
-            </button>
+            <div style="display:inline-flex; gap:10px; flex-wrap:wrap; justify-content:center;">
+              <button id="btn-generate-ai" class="btn btn-primary" style="padding:10px 22px; font-weight:700; box-shadow:var(--shadow-sm); display:inline-flex; align-items:center; gap:8px; background:linear-gradient(135deg,#1e3a5f,#2d6a9f);">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                Run Coordinator Analysis (Groq)
+              </button>
+            </div>
+            <div style="margin-top:14px; padding:8px 14px; background:#fff7ed; border:1px solid #fed7aa; border-radius:6px; font-size:11.5px; color:#9a3412; display:inline-block; max-width:480px;">
+              <strong>Advisory Notice:</strong> AI analysis is for reference only. All official decisions require authorized human review. AI may not approve, reject, or change case status.
+            </div>
           </div>
         </div>
       </div>
@@ -610,25 +654,26 @@ async function handleGenerateAIReport(entity, values = []) {
 
   reportBody.innerHTML = `
     <div style="text-align:center; padding: 2rem 1rem;">
-      <div class="spinner spinner-lg mb-3" style="border-top-color:var(--primary); margin:0 auto 12px auto;"></div>
-      <div style="font-weight:600; color:var(--text-primary); font-size:15px;">Running Civic Intelligence Analysis...</div>
-      <div style="color:var(--text-muted); font-size:13px; margin-top:4px;">Evaluating observations, patterns, recommendations, and evidence.</div>
+      <div class="spinner spinner-lg mb-3" style="border-top-color:#2d6a9f; margin:0 auto 12px auto;"></div>
+      <div style="font-weight:700; color:#1e3a5f; font-size:15px;">Running Coordinator Advisory Analysis...</div>
+      <div style="color:var(--text-muted); font-size:13px; margin-top:4px;">Analyzing case data via Groq AI. This may take a few seconds.</div>
     </div>
   `;
 
   try {
-    const res = await apiEntities.aiAnalysis(entityId);
-    toastSuccess('Civic Intelligence Analysis generated successfully!');
-    reportBody.innerHTML = renderReportSections(res.data);
+    const res = await coordinatorAI.analyze(entityId);
+    toastSuccess('Coordinator Analysis generated successfully!');
+    reportBody.innerHTML = renderCoordinatorReport(res.data, res.similar_cases, res.legal_context_meta, res.advisory_disclaimer);
   } catch (err) {
-    const isKeyError = String(err.message || '').includes('GEMINI_API_KEY') || String(err.message || '').includes('Gemini API key');
-    if (isKeyError) {
-      toastSuccess('Generated Civic Decision Intelligence Preview from Case Parameters');
+    const isKeyMissing = String(err.message || '').includes('GROQ_API_KEY') || (err.status === 503);
+    if (isKeyMissing) {
+      // Graceful degradation: show the existing legacy preview when Groq is not configured
+      toastSuccess('Generated preview analysis from case parameters (Groq not configured)');
       const previewReport = buildCivicIntelligencePreview(entity, values);
-      reportBody.innerHTML = renderReportSections(previewReport);
+      reportBody.innerHTML = renderLegacyPreviewReport(previewReport);
     } else {
-      toastError(err.message || 'Could not generate AI report');
-      reportBody.innerHTML = `<div class="alert alert-error">AI Analysis failed: ${escapeHtml(err.message)}</div>`;
+      toastError(err.message || 'Could not generate coordinator analysis');
+      reportBody.innerHTML = `<div class="alert alert-error">Coordinator AI Analysis failed: ${escapeHtml(err.message)}</div>`;
     }
   }
 }
@@ -758,4 +803,191 @@ function renderReportSections(report) {
       </div>
     </div>
   `;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Coordinator Advisory AI Report Renderer (Ayush's Module)
+// Renders the structured Groq analysis with all 6 sections.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function renderCoordinatorReport(report, similarCases = [], legalContextMeta = null, disclaimer = '') {
+  if (!report) {
+    return `<div class="alert alert-error">Analysis data was empty or invalid.</div>`;
+  }
+
+  const missingInfo = Array.isArray(report.missing_information) ? report.missing_information : [];
+  const attentionFactors = Array.isArray(report.attention_factors) ? report.attention_factors : [];
+  const stakeholders = Array.isArray(report.stakeholder_suggestions) ? report.stakeholder_suggestions : [];
+  const legalRefs = Array.isArray(report.legal_references) ? report.legal_references : [];
+
+  const categoryBadge = (cat) => {
+    if (!cat) return '';
+    const styles = {
+      mandatory_field: 'background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;',
+      potentially_useful: 'background:#fef3c7;color:#b45309;border:1px solid #fcd34d;',
+      clarification_needed: 'background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;',
+    };
+    const style = styles[cat] || 'background:#f3f4f6;color:#374151;border:1px solid #d1d5db;';
+    return `<span style="padding:2px 8px;border-radius:12px;font-size:10px;font-weight:700;${style}">${escapeHtml(cat.replace(/_/g,' '))}</span>`;
+  };
+
+  const attentionTypeBadge = (type) => {
+    const colors = {
+      time_sensitivity: '#dc2626',
+      safety: '#7c3aed',
+      missing_critical: '#b45309',
+      coordination: '#0369a1',
+      historical_pattern: '#065f46',
+      other: '#374151',
+    };
+    const color = colors[type] || '#374151';
+    return `<span style="font-size:10px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:0.05em;">${escapeHtml((type||'').replace(/_/g,' '))}</span>`;
+  };
+
+  const severityIcon = (type) => {
+    if (type === 'time_sensitivity' || type === 'safety') return '<svg width="10" height="10" viewBox="0 0 10 10" style="vertical-align:middle; margin-right:3px;"><circle cx="5" cy="5" r="4.5" fill="#ef4444"/></svg>';
+    if (type === 'missing_critical' || type === 'coordination') return '<svg width="10" height="10" viewBox="0 0 10 10" style="vertical-align:middle; margin-right:3px;"><circle cx="5" cy="5" r="4.5" fill="#f59e0b"/></svg>';
+    return '<svg width="10" height="10" viewBox="0 0 10 10" style="vertical-align:middle; margin-right:3px;"><circle cx="5" cy="5" r="4.5" fill="#3b82f6"/></svg>';
+  };
+
+  return `
+    <div style="font-size:13px;color:var(--text-primary);line-height:1.6;">
+
+      <!-- Advisory Disclaimer Banner -->
+      <div style="margin-bottom:14px;padding:10px 14px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;font-size:12px;color:#9a3412;display:flex;align-items:flex-start;gap:8px;">
+        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0;margin-top:1px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        <div><strong>Advisory Analysis Only:</strong> ${escapeHtml(disclaimer || 'This AI analysis must be reviewed by an authorized officer. It does not constitute an official decision or workflow action.')}</div>
+      </div>
+
+      <!-- A: Case Summary -->
+      <div style="margin-bottom:12px;padding:14px;background:#fff;border-radius:8px;border:1px solid var(--border);border-left:4px solid #2d6a9f;">
+        <strong style="color:#1e3a5f;font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> A. Case Summary</strong>
+        <p style="margin:0;color:var(--text-secondary);">${escapeHtml(report.case_summary || 'No summary generated.')}</p>
+      </div>
+
+      <!-- B: Missing Information -->
+      <div style="margin-bottom:12px;padding:14px;background:#fff;border-radius:8px;border:1px solid var(--border);border-left:4px solid #dc2626;">
+        <strong style="color:#1e3a5f;font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> B. Missing / Incomplete Information</strong>
+        ${missingInfo.length > 0 ? `
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${missingInfo.map(m => `
+              <div style="padding:8px 12px;background:#fafafa;border:1px solid #e5e7eb;border-radius:6px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+                <div>
+                  <div style="font-weight:600;color:var(--text-primary);margin-bottom:2px;">${escapeHtml(m.field || 'Unknown field')}</div>
+                  <div style="font-size:12px;color:var(--text-secondary);">${escapeHtml(m.note || '')}</div>
+                </div>
+                ${categoryBadge(m.category)}
+              </div>
+            `).join('')}
+          </div>
+        ` : `<div style="color:var(--text-muted);font-size:13px;">No missing mandatory fields detected from configured parameters.</div>`}
+        <div style="margin-top:10px;font-size:11px;color:#6b7280;font-style:italic;">
+          Note: "mandatory_field" indicates a configured required field. "potentially_useful" and "clarification_needed" are AI advisory suggestions only — not system-enforced requirements.
+        </div>
+      </div>
+
+      <!-- C: Attention Factors -->
+      <div style="margin-bottom:12px;padding:14px;background:#fff;border-radius:8px;border:1px solid var(--border);border-left:4px solid #7c3aed;">
+        <strong style="color:#1e3a5f;font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> C. Attention Factors</strong>
+        ${attentionFactors.length > 0 ? `
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${attentionFactors.map(af => `
+              <div style="padding:10px 12px;background:#fafafa;border:1px solid #e5e7eb;border-radius:6px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                  <span>${severityIcon(af.type)}</span>
+                  ${attentionTypeBadge(af.type)}
+                  <span style="font-weight:600;color:var(--text-primary);">${escapeHtml(af.factor || '')}</span>
+                </div>
+                <div style="font-size:12px;color:var(--text-secondary);padding-left:24px;">${escapeHtml(af.detail || '')}</div>
+              </div>
+            `).join('')}
+          </div>
+        ` : `<div style="color:var(--text-muted);font-size:13px;">No significant attention factors identified from available case data.</div>`}
+        <div style="margin-top:10px;font-size:11px;color:#6b7280;font-style:italic;">
+          AI-suggested priority signals only. The coordinator is responsible for all official prioritization decisions.
+        </div>
+      </div>
+
+      <!-- D: Stakeholder Suggestions -->
+      <div style="margin-bottom:12px;padding:14px;background:#fff;border-radius:8px;border:1px solid var(--border);border-left:4px solid #059669;">
+        <strong style="color:#1e3a5f;font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 20h5v-2a3 3 0 0 0-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 0 1 5.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg> D. Suggested Stakeholders / Routing</strong>
+        ${stakeholders.length > 0 ? `
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${stakeholders.map(sh => `
+              <div style="padding:8px 12px;background:#fafafa;border:1px solid #e5e7eb;border-radius:6px;">
+                <div style="font-weight:600;color:var(--text-primary);margin-bottom:2px;">${escapeHtml(sh.stakeholder || '')}</div>
+                <div style="font-size:12px;color:var(--text-secondary);">${escapeHtml(sh.rationale || '')}</div>
+              </div>
+            `).join('')}
+          </div>
+        ` : `<div style="color:var(--text-muted);font-size:13px;">No specific stakeholder suggestions identified from available case data.</div>`}
+        <div style="margin-top:10px;font-size:11px;color:#6b7280;font-style:italic;">
+          These are advisory suggestions only. The AI cannot and does not change case ownership, jurisdiction, or routing. All routing decisions are made by authorized officers.
+        </div>
+      </div>
+
+      <!-- E: Similar Cases -->
+      ${similarCases && similarCases.length > 0 ? `
+        <div style="margin-bottom:12px;padding:14px;background:#fff;border-radius:8px;border:1px solid var(--border);border-left:4px solid #0369a1;">
+          <strong style="color:#1e3a5f;font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> E. Similar Historical Cases</strong>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${similarCases.map(sc => `
+              <div style="padding:8px 12px;background:#fafafa;border:1px solid #e5e7eb;border-radius:6px;display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                  <a href="/entities/${sc.entity_id}" style="font-weight:600;color:#1d4ed8;text-decoration:none;">#${String(sc.entity_id).padStart(5,'0')} ${escapeHtml(sc.name || '')}</a>
+                  <span style="font-size:11px;color:var(--text-muted);margin-left:6px;">${escapeHtml(sc.type_name || '')} · ${escapeHtml(sc.area || 'N/A')}</span>
+                </div>
+                <span style="font-size:11px;padding:2px 8px;border-radius:12px;background:#e5e7eb;color:#374151;font-weight:600;">${escapeHtml(sc.status || '')}</span>
+              </div>
+            `).join('')}
+          </div>
+          <div style="margin-top:8px;font-size:11px;color:#6b7280;font-style:italic;">
+            Only cases accessible to your role and area are shown. Similarity is based on entity type and area — verify relevance independently.
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- Legal References (only if retrieved) -->
+      ${legalRefs.length > 0 ? `
+        <div style="margin-bottom:12px;padding:14px;background:#f8faff;border-radius:8px;border:1px solid #c7d7f5;border-left:4px solid #1d4ed8;">
+          <strong style="color:#1e3a5f;font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1z"/><path d="M2 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h18"/></svg> F. Constitutional / Legal References</strong>
+          <div style="margin-bottom:8px;padding:8px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:11px;color:#1e40af;">
+            <strong>IMPORTANT:</strong> These references are retrieved from a verified corpus of official government sources. They are advisory only and must not be treated as legal opinions. Verify against current official documents before relying on any reference.
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${legalRefs.map(lr => `
+              <div style="padding:10px 12px;background:#fff;border:1px solid #e0e7ff;border-radius:6px;">
+                <div style="font-weight:700;color:#1e40af;margin-bottom:4px;">${escapeHtml(lr.reference || '')}</div>
+                <div style="font-size:12px;color:#374151;margin-bottom:4px;">${escapeHtml(lr.relevance || '')}</div>
+                <div style="font-size:11px;color:#6b7280;font-style:italic;">Source: ${escapeHtml(lr.source || '')}</div>
+              </div>
+            `).join('')}
+          </div>
+          ${legalContextMeta ? `
+            <div style="margin-top:8px;font-size:11px;color:#4b5563;">
+              ${legalContextMeta.passages_retrieved} passage(s) retrieved from: ${(legalContextMeta.sources || []).map(s => escapeHtml(s)).join(', ')}.
+              Verify at <a href="https://www.legislative.gov.in/documents" target="_blank" rel="noopener" style="color:#1d4ed8;">legislative.gov.in</a>.
+            </div>
+          ` : ''}
+        </div>
+      ` : ''}
+
+      <!-- Advisory Footer -->
+      ${report.advisory_note ? `
+        <div style="margin-bottom:12px;padding:12px 14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;font-size:13px;color:#0369a1;">
+          <strong>Advisory Note:</strong> ${escapeHtml(report.advisory_note)}
+        </div>
+      ` : ''}
+
+      <!-- Final Protocol Notice -->
+      <div style="padding:10px 14px;background:var(--yellow-50,#fefce8);border:1px solid var(--yellow-100,#fef08a);border-radius:8px;font-size:12px;color:#713f12;display:flex;align-items:flex-start;gap:8px;">
+        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0;margin-top:1px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        <span><strong>Coordinator AI Protocol:</strong> This report was generated by CIVIC-KALKI's Coordinator Advisory AI (Groq). It is strictly advisory. Field verification, independent judgment, and official workflow actions remain the sole responsibility of authorized human officers. AI may not and does not approve, reject, escalate, or change any case status.</span>
+      </div>
+    </div>
+  `;
+}
+
+function renderLegacyPreviewReport(report) {
+  return renderReportSections(report);
 }

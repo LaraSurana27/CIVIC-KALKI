@@ -243,7 +243,7 @@ window.editUserRole = async (userId) => {
           <select id="new-area" class="form-control">
             <option value="">-- Select Allocated Area / Jurisdiction --</option>
             ${optionsHTML}
-            <option value="__custom__">➕ Other / Custom Area Name...</option>
+            <option value="__custom__">+ Other / Custom Area Name...</option>
           </select>
           <div id="custom-area-wrapper" style="display:none; margin-top:8px;">
             <input type="text" id="custom-area-input" class="form-control" placeholder="Type custom jurisdiction or ward name (e.g. Kothrud, Sector 5)..." />

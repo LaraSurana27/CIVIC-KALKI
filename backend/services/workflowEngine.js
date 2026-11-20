@@ -75,23 +75,26 @@ async function validateWorkflowTransition({
       };
     }
 
-    // Role-specific ownership and area constraints
+    // Role-specific ownership and area constraints (metadata-driven path)
     if (actorRole === 'citizen') {
+      // Citizen can only transition their own entities
       if (entity.owner_user_id && Number(actorUserId) !== Number(entity.owner_user_id)) {
         return { allowed: false, reason: 'Only the entity owner can perform this citizen transition.', source: 'metadata' };
       }
     } else if (actorRole === 'coordinator_area') {
+      // Area coordinator is restricted to their assigned area only
       const entityArea = String(entity.area || '').trim();
       const assignedArea = String(actorAssignedArea || '').trim();
+      if (!assignedArea) {
+        return { allowed: false, reason: 'Area Coordinator has no assignedArea configured. Contact admin.', source: 'metadata' };
+      }
       if (!entityArea || entityArea !== assignedArea) {
         return { allowed: false, reason: `Area Coordinator assigned to "${assignedArea}" cannot review entity in area "${entityArea || 'Unassigned'}".`, source: 'metadata' };
       }
-    } else if (actorRole === 'coordinator_general') {
-      const entityArea = String(entity.area || '').trim();
-      if (entityArea && entityArea !== 'Unassigned') {
-        return { allowed: false, reason: 'General Coordinator can only handle entities in unassigned areas.', source: 'metadata' };
-      }
     }
+    // NOTE: coordinator_general has NO area restriction in the metadata-driven path.
+    // The WorkflowMaster rules themselves define which transitions coordinator_general
+    // can perform. Adding an area check here would contradict those rules.
 
     return { allowed: true, rule: matchingRule, source: 'metadata' };
 

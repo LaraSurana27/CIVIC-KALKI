@@ -28,6 +28,9 @@ export async function renderEntities(params = {}, searchParams = null) {
   if (urlParams.has('name')) currentParams.name = urlParams.get('name');
   else delete currentParams.name;
 
+  if (urlParams.has('area')) currentParams.area = urlParams.get('area');
+  else delete currentParams.area;
+
   if (urlParams.has('page')) currentParams.page = Number(urlParams.get('page'));
   else currentParams.page = 1;
   
@@ -40,6 +43,11 @@ export async function renderEntities(params = {}, searchParams = null) {
     currentParams.owner_user_id = user.user_id;
   } else {
     delete currentParams.owner_user_id;
+  }
+
+  // Area coordinators are strictly scoped to their assigned area
+  if (role === 'coordinator_area' && user?.assignedArea) {
+    currentParams.area = user.assignedArea;
   }
 
   // Load EntityTypes list dynamically

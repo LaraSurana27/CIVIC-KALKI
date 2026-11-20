@@ -20,12 +20,14 @@ import { requireAuth } from '../auth.js';
 import { renderLayout, attachLayoutEvents } from '../components/layout.js';
 import { agent as agentApi } from '../api.js';
 import { navigate } from '../router.js';
+import { initReadOnlyMaps } from '../components/ReadOnlyMap.js';
 
 // ── State (per-page-load, not persistent) ────────────────────────────────────
 let sessionId = null;
 let isWaiting = false;         // prevent double-sends while agent is thinking
 let pendingConfirmData = null; // holds summary when agent is waiting for yes/no
 let pendingFile = null;        // File object waiting to be sent with message
+let activeLocation = null;     // { latitude, longitude, area, address } attached to session
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 function escapeHtml(str) {
@@ -58,7 +60,7 @@ function renderUserBubble(text, attachment = null) {
         <div class="agent-user-attachment">
           <img src="${escapeHtml(attachment.previewUrl)}" alt="${escapeHtml(attachment.name)}" class="agent-attachment-thumb" />
           <div class="agent-attachment-meta">
-            <span class="agent-attachment-name">📷 ${escapeHtml(attachment.name)}</span>
+            <span class="agent-attachment-name" style="display:inline-flex; align-items:center; gap:4px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> ${escapeHtml(attachment.name)}</span>
             <span class="agent-attachment-size">${escapeHtml(attachment.sizeStr)}</span>
           </div>
         </div>
@@ -66,7 +68,7 @@ function renderUserBubble(text, attachment = null) {
     } else {
       attachmentHtml = `
         <div class="agent-user-attachment agent-attachment-doc">
-          <span class="agent-attachment-icon">📄</span>
+          <span class="agent-attachment-icon" style="display:inline-flex; align-items:center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
           <div class="agent-attachment-meta">
             <span class="agent-attachment-name">${escapeHtml(attachment.name)}</span>
             <span class="agent-attachment-size">${escapeHtml(attachment.sizeStr)}</span>
@@ -132,15 +134,23 @@ function renderConfirmCard(summaryRows, confirmText) {
         </div>
         ${intro}
         <div class="agent-confirm-table">${rows}</div>
+        ${activeLocation && activeLocation.latitude != null ? `
+          <div style="margin-top:10px; border-radius:8px; overflow:hidden; border:1px solid var(--border);">
+            <div id="agent-confirm-minimap-${Date.now()}" data-lat="${activeLocation.latitude}" data-lng="${activeLocation.longitude}" class="entity-readonly-map-instance" style="height:140px; width:100%; z-index:1;"></div>
+          </div>
+        ` : ''}
         <div class="agent-confirm-note" style="margin-top:10px; font-size:0.75rem; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
-          <span>📎</span> <span>Uploaded photo/document evidence will be attached directly to your official submission.</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          <span>Uploaded photo/document evidence will be attached directly to your official submission.</span>
         </div>
         <div class="agent-confirm-actions" id="agent-confirm-btns">
-          <button id="agent-submit-btn" class="btn btn-primary" style="min-width:120px;">
-            ✓ Submit
+          <button id="agent-submit-btn" class="btn btn-primary" style="min-width:120px; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Submit
           </button>
-          <button id="agent-cancel-btn" class="btn btn-secondary" style="min-width:100px;">
-            ✗ Cancel
+          <button id="agent-cancel-btn" class="btn btn-secondary" style="min-width:100px; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            Cancel
           </button>
         </div>
       </div>
@@ -150,8 +160,9 @@ function renderConfirmCard(summaryRows, confirmText) {
 
 function renderSuccessCard(entityId, entityName, capability, files = []) {
   const filesListHtml = Array.isArray(files) && files.length > 0
-    ? `<div style="font-size:0.78rem; color:var(--text-muted); margin-bottom:12px; display:flex; align-items:center; gap:4px;">
-         <span>📎</span> <span>Attached evidence: <strong>${files.map(escapeHtml).join(', ')}</strong></span>
+    ? `<div style="font-size:0.78rem; color:var(--text-muted); margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+         <span>Attached evidence: <strong>${files.map(escapeHtml).join(', ')}</strong></span>
        </div>`
     : '';
 
@@ -163,8 +174,9 @@ function renderSuccessCard(entityId, entityName, capability, files = []) {
         </svg>
       </div>
       <div class="agent-success-card">
-        <div style="font-weight:700; font-size:1rem; color:var(--green-700); margin-bottom:6px;">
-          ✅ ${escapeHtml(capability)} Submitted!
+        <div style="font-weight:700; font-size:1rem; color:var(--green-700); margin-bottom:6px; display:inline-flex; align-items:center; gap:6px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--green-700)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          ${escapeHtml(capability)} Submitted!
         </div>
         <div style="font-size:0.875rem; color:var(--text-secondary); margin-bottom:8px;">
           <strong>#${entityId}</strong> — ${escapeHtml(entityName)}
@@ -256,7 +268,7 @@ function updateAttachmentPreview() {
   bar.style.display = 'flex';
   bar.innerHTML = `
     <div class="agent-preview-chip">
-      ${isImage ? `<img src="${previewUrl}" class="agent-preview-thumb" alt="Preview" />` : '<span class="agent-preview-icon">📄</span>'}
+      ${isImage ? `<img src="${previewUrl}" class="agent-preview-thumb" alt="Preview" />` : '<span class="agent-preview-icon" style="display:inline-flex; align-items:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>'}
       <div class="agent-preview-info">
         <span class="agent-preview-filename">${escapeHtml(pendingFile.name)}</span>
         <span class="agent-preview-filesize">${formatFileSize(pendingFile.size)}</span>
@@ -314,7 +326,7 @@ async function sendMessage(message, explicitFile = null) {
   appendHtml(renderThinkingBubble());
 
   try {
-    const res = await agentApi.chat(sessionId, cleanMsg, fileToUpload);
+    const res = await agentApi.chat(sessionId, cleanMsg, fileToUpload, activeLocation);
     removeThinking();
 
     const data = res.data;
@@ -324,6 +336,7 @@ async function sendMessage(message, explicitFile = null) {
       pendingConfirmData = data;
       appendHtml(renderConfirmCard(data.summary || [], data.text));
 
+      setTimeout(() => initReadOnlyMaps(), 60);
       // Wire confirm/cancel buttons
       setTimeout(() => {
         const submitBtn = document.getElementById('agent-submit-btn');
@@ -419,6 +432,11 @@ export async function renderAgentChat(params = {}, searchParams = null) {
         display: flex; flex-direction: column;
         background:var(--surface); border:1px solid var(--border);
         border-radius:0 0 12px 12px; border-top: 1px solid var(--border-strong);
+      }
+      .agent-loc-bar {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 7px 16px; background: rgba(0,0,0,0.02);
+        border-bottom: 1px solid var(--border); font-size: 0.78rem;
       }
       .agent-file-preview-bar {
         display: none; padding: 8px 16px 0 16px;
@@ -562,7 +580,7 @@ export async function renderAgentChat(params = {}, searchParams = null) {
 
       <div id="agent-thread" role="log" aria-live="polite" aria-label="Conversation with Civic Assistant">
         <!-- Initial greeting -->
-        ${renderAgentBubble('Hello! I\'m your CIVIC-KALKI assistant. I can help you:\n\n**1.** Report a civic problem (potholes, garbage, water supply, broken street lights…)\n     *Tip: You can attach photo/document evidence directly using the 📎 button! Our AI will analyze the photo and fill the details for you.*\n**2.** Start a civic initiative (community project, campaign…)\n**3.** Check the status of your existing requests\n\nWhat would you like to do today?')}
+        ${renderAgentBubble('Hello! I\'m your CIVIC-KALKI assistant. I can help you:\n\n**1.** Report a civic problem (potholes, garbage, water supply, broken street lights…)\n     *Tip: You can attach photo/document evidence directly using the paperclip button! Our AI will analyze the photo and fill the details for you.*\n**2.** Start a civic initiative (community project, campaign…)\n**3.** Check the status of your existing requests\n\nWhat would you like to do today?')}
       </div>
 
       <div class="agent-input-container">

@@ -107,7 +107,34 @@ router.post(
         role:    req.user.role || 'citizen',
       };
 
-      const result = await continueFormFilling(cleanSessionId, cleanMessage, user, [], attachedFile);
+      // Extract optional location context
+      let userLocation = null;
+      const rawLat = req.body?.latitude !== undefined ? req.body.latitude : req.body?.location?.latitude;
+      const rawLng = req.body?.longitude !== undefined ? req.body.longitude : req.body?.location?.longitude;
+      const rawArea = req.body?.area !== undefined ? req.body.area : req.body?.location?.area;
+      const rawAddress = req.body?.address !== undefined ? req.body.address : req.body?.location?.address;
+
+      if (rawLat !== undefined && rawLat !== null && rawLng !== undefined && rawLng !== null && rawLat !== '' && rawLng !== '') {
+        const parsedLat = Number(rawLat);
+        const parsedLng = Number(rawLng);
+        if (!isNaN(parsedLat) && !isNaN(parsedLng) && parsedLat >= -90 && parsedLat <= 90 && parsedLng >= -180 && parsedLng <= 180) {
+          userLocation = {
+            latitude: parsedLat,
+            longitude: parsedLng,
+            area: rawArea ? String(rawArea).trim() : null,
+            address: rawAddress ? String(rawAddress).trim() : null,
+          };
+        }
+      } else if (rawArea) {
+        userLocation = {
+          latitude: null,
+          longitude: null,
+          area: String(rawArea).trim(),
+          address: rawAddress ? String(rawAddress).trim() : null,
+        };
+      }
+
+      const result = await continueFormFilling(cleanSessionId, cleanMessage, user, [], attachedFile, userLocation);
 
       return res.status(200).json({ success: true, data: result });
     } catch (err) {

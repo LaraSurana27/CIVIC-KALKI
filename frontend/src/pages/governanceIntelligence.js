@@ -229,11 +229,13 @@ function updateUI() {
                   </span>
                   ${hasExceptions ? `
                     <span style="font-size: 11px; font-weight: 700; background: #fee2e2; color: #b91c1c; padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;">
-                      ⚠️ ${step.exception_count} gap${step.exception_count > 1 ? 's' : ''}
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                      ${step.exception_count} gap${step.exception_count > 1 ? 's' : ''}
                     </span>
                   ` : `
-                    <span style="font-size: 11px; font-weight: 700; background: #dcfce7; color: #15803d; padding: 2px 6px; border-radius: 4px;">
-                      ✓ Healthy
+                    <span style="font-size: 11px; font-weight: 700; background: #dcfce7; color: #15803d; padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                      Healthy
                     </span>
                   `}
                 </div>
@@ -243,8 +245,9 @@ function updateUI() {
                 <div style="font-size: 1.4rem; font-weight: 800; color: var(--text-primary); margin-bottom: 4px;">
                   ${step.count} <span style="font-size: 12px; font-weight: 500; color: var(--text-secondary);">in stage</span>
                 </div>
-                <div style="font-size: 12px; color: var(--text-muted); border-top: 1px dashed var(--gray-200); padding-top: 6px; margin-top: 6px;">
-                  ⏱ ${step.avg_days_in_stage !== null ? `${step.avg_days_in_stage} days avg` : 'Terminal stage'}
+                <div style="font-size: 12px; color: var(--text-muted); border-top: 1px dashed var(--gray-200); padding-top: 6px; margin-top: 6px; display: flex; align-items: center; gap: 4px;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  <span>${step.avg_days_in_stage !== null ? `${step.avg_days_in_stage} days avg` : 'Terminal stage'}</span>
                 </div>
               </div>
             `;
@@ -335,7 +338,9 @@ function updateUI() {
 
         ${exceptions.length === 0 ? `
           <div style="text-align: center; padding: 32px; color: var(--text-secondary);">
-            <div style="font-size: 2rem; margin-bottom: 8px;">✓</div>
+            <div style="display: flex; justify-content: center; margin-bottom: 12px;">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            </div>
             <strong>Zero Exceptions Detected</strong>
             <p style="font-size: 13px; margin-top: 4px;">All transactions strictly satisfy configured governance and state-sync rules.</p>
           </div>
@@ -453,7 +458,9 @@ function renderError(message) {
   if (!app) return;
   app.innerHTML = renderLayout(`
     <div style="padding: 40px 0; text-align: center;">
-      <div style="font-size: 3rem; margin-bottom: 12px;">⚠️</div>
+      <div style="display: flex; justify-content: center; margin-bottom: 16px;">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
       <h2 style="font-size: 1.5rem; color: var(--text-primary); margin-bottom: 8px;">Governance Intelligence Error</h2>
       <p style="color: var(--text-secondary); max-width: 500px; margin: 0 auto 20px auto;">
         ${escapeHtml(message || 'Unable to execute governance analysis.')}

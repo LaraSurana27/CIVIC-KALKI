@@ -82,7 +82,9 @@ async function checkAndFireRules(entityId, eventType, depth = 0) {
 
     const targetTypeName = rule.targetEntityType.name;
     const newEntityName = `${sourceEntity.name} - ${targetTypeName}`;
-    const newStatus = rule.auto_approve ? 'approved' : 'pending';
+    // FIX: Use 'draft' (not 'pending') as initial status so child enters the standard
+    // workflow. 'pending' has no WorkflowMaster rules defined and leaves the entity stuck.
+    const newStatus = rule.auto_approve ? 'approved' : 'draft';
 
     // Visibility-aware coordinate inheritance:
     // Never copy coordinates from a parent whose location_visibility is "restricted"
@@ -101,6 +103,8 @@ async function checkAndFireRules(entityId, eventType, depth = 0) {
           latitude: canCopyLocation ? sourceEntity.latitude : null,
           longitude: canCopyLocation ? sourceEntity.longitude : null,
           area: sourceEntity.area, // inherit area from source
+          jurisdiction_id: sourceEntity.jurisdiction_id || null, // inherit jurisdiction
+          owner_user_id: sourceEntity.owner_user_id || null,     // inherit owner
           status: newStatus,
         },
         include: {

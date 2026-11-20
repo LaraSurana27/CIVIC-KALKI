@@ -33,7 +33,7 @@ function cleanJsonResponseText(text) {
  */
 function isValidIntentSchema(data) {
   if (!data || typeof data !== 'object') return false;
-  const validActions = ['report', 'initiate', 'status_check', 'guidance', 'unclear'];
+  const validActions = ['report', 'initiate', 'status_check', 'nearby_query', 'guidance', 'unclear'];
   const validCapabilities = ['Grievance', 'Movement', null];
   const validConfidence = ['high', 'low'];
   return (
@@ -51,7 +51,7 @@ function isValidIntentSchema(data) {
  * @param {Array<{role:string,content:string}>} conversationHistory - Prior turns
  * @param {Object|null} attachedFile - Optional attached file metadata
  */
-function buildIntentPrompt(message, conversationHistory = [], attachedFile = null) {
+function buildIntentPrompt(message, conversationHistory = [], attachedFile = null, userLocation = null) {
   const historyText = conversationHistory.length > 0
     ? conversationHistory.map(t => `${t.role === 'user' ? 'Citizen' : 'Agent'}: ${t.content}`).join('\n')
     : '(no prior conversation)';
@@ -59,6 +59,14 @@ function buildIntentPrompt(message, conversationHistory = [], attachedFile = nul
   const fileNote = attachedFile
     ? `\nATTACHED FILE: "${attachedFile.originalName}" (${attachedFile.mimeType}). If the citizen has attached a photo or document related to a civic issue or problem, strongly favor "report" (Grievance) unless text suggests an initiative.`
     : '';
+
+  let locationNote = '';
+  if (userLocation) {
+    locationNote = `\nCITIZEN LOCATION CONTEXT:` +
+      (userLocation.area ? `\n- Area/Ward: ${userLocation.area}` : '') +
+      (userLocation.latitude ? `\n- Coordinates: ${userLocation.latitude}, ${userLocation.longitude}` : '') +
+      (userLocation.address ? `\n- Address/Landmark: ${userLocation.address}` : '');
+  }
 
   return `
 You are an intent classifier for CIVIC-KALKI, a municipal civic action platform.
@@ -68,7 +76,7 @@ PRIOR CONVERSATION (for context, may be empty):
 ${historyText}
 
 CITIZEN'S LATEST MESSAGE:
-"${message}"${fileNote}
+"${message}"${fileNote}${locationNote}
 
 AVAILABLE INTENTS:
 - "report"        → Citizen wants to report a civic problem, complaint, grievance, or issue
@@ -77,6 +85,8 @@ AVAILABLE INTENTS:
                     (e.g. cleanliness drive, community project, awareness campaign)
 - "status_check"  → Citizen wants to know the status of their existing request(s)
                     (e.g. "what happened to my complaint", "is my request approved yet")
+- "nearby_query"  → Citizen wants to discover civic issues, rallies, protests, or initiatives near their area/location
+                    (e.g. "what is happening near me", "show protests near my area", "any nearby civic events")
 - "guidance"      → Citizen is asking a general question about how the platform works
                     (e.g. "how do I file a complaint", "what can I do here")
 - "unclear"       → Message is ambiguous, off-topic, or cannot be confidently classified
@@ -94,7 +104,7 @@ Respond with ONLY a single raw valid JSON object. No markdown, no explanation, n
 
 Required schema:
 {
-  "action_type": "report" | "initiate" | "status_check" | "guidance" | "unclear",
+  "action_type": "report" | "initiate" | "status_check" | "nearby_query" | "guidance" | "unclear",
   "matched_capability": "Grievance" | "Movement" | null,
   "confidence": "high" | "low"
 }
@@ -111,7 +121,7 @@ Required schema:
  * @param {Object|null} attachedFile - Optional attached file metadata
  * @returns {Promise<{action_type:string, matched_capability:string|null, confidence:string}>}
  */
-async function routeIntent(message, conversationHistory = [], attachedFile = null) {
+async function routeIntent(message, conversationHistory = [], attachedFile = null, userLocation = null) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey.trim() === '') {
     // Graceful degradation: return unclear so the caller can show a helpful message
@@ -121,7 +131,7 @@ async function routeIntent(message, conversationHistory = [], attachedFile = nul
 
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
-  const promptText = buildIntentPrompt(message, conversationHistory, attachedFile);
+  const promptText = buildIntentPrompt(message, conversationHistory, attachedFile, userLocation);
 
   let parsed = null;
 
